@@ -2,28 +2,35 @@
 基于BCH实现发Token的功能  
 实现的思路是把Token的内容放在BCH脚本中, 依附在交易上, 通过BCH的交易来转移Token  
 扩展opcode: OP_TOKEN  
-添加rpc:  
+添加rpc:
+```
 createtokenscript  
 createtokentx  
 signtokentx  
 gettokenbalance  
 listtokenunspent  
-
+```
 
 # tokenization example  
 按照以下几步就可以实现Token的分发  
 1. 创建Token脚本  
-脚本内容是:  
+脚本内容是:
+```
 OP_TOKEN <tokenname> <tokensupply> OP_DROP OP_DROP OP_DUP OP_HASH160 <pubkey> OP_EQUALVERIFY  
-OP_CHECKSIG  
-比如我想发代号为gon的代币10000个  
+OP_CHECKSIG
+```  
+比如我想发代号为gon的代币10000个
+```
 ./bitcoin-cli createtokenscript gon 10000  
 {  
 "address": "pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps",  
 "token": "b303676f6e021027757576a914c8ad0da40b0ff475cd749a3aa455f5af3dc3f0f388ac"  
-}  
-2. 向Token脚本中打BCH  
-./bitcoin-cli sentoaddress pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 1  
+}
+```
+2. 向Token脚本中打BCH
+```
+./bitcoin-cli sentoaddress pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 1
+```  
 交易上链后就实现了Token的发行, 在这个例子中地址 pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 内有10000个gon, 同时  
 也有1个BCH  
 3. 查看Token数量  
@@ -65,7 +72,9 @@ qzrsn9dhyvpgcwvrc28vkaylqee47amnacp2mt6ayp 上转移6000个gon, 可以这么操�
 ]'
 ```   
 接着对createtokentx的交易进行签名  
-`./bitcoin-cli signtokentx <hex>  `
+```
+./bitcoin-cli signtokentx <hex>
+```  
 广播上链后可以调用listtokenunspent再次查看token  
 ```  
 ./bitcoin-cli listtokenunspent  
