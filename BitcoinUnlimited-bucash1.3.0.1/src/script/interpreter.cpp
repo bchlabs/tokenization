@@ -429,9 +429,9 @@ bool EvalScript(vector<vector<unsigned char> > &stack,
                 case OP_NOP:
                     break;
 					
-				// Token
-				case OP_TOKEN:
-					break;
+		// Token
+		case OP_TOKEN:
+		    break;
 
                 case OP_CHECKLOCKTIMEVERIFY:
                 {

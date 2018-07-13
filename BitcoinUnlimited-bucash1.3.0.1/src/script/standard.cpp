@@ -44,8 +44,8 @@ const char *GetTxnOutputType(txnouttype t)
         return "cltv"; // CLTV HODL Freeze
     case TX_LABELPUBLIC:
         return "publiclabel";
-	// Token
-	case TX_TOKEN:
+    // Token
+    case TX_TOKEN:
         return "token";
     }
     return NULL;
@@ -92,11 +92,11 @@ bool Solver(const CScript &scriptPubKey, txnouttype &typeRet, vector<vector<unsi
         return true;
     }
 	
-	// Token
-	if (scriptPubKey.IsPayToToken())
+    // Token
+    if (scriptPubKey.IsPayToToken())
     {
         typeRet = TX_TOKEN;
-		vector<unsigned char> hashBytes(scriptPubKey.end() - 22, scriptPubKey.end() - 2);
+	vector<unsigned char> hashBytes(scriptPubKey.end() - 22, scriptPubKey.end() - 2);
         vSolutionsRet.push_back(hashBytes);
         return true;
     }
@@ -249,8 +249,8 @@ bool ExtractDestination(const CScript &scriptPubKey, CTxDestination &addressRet)
         addressRet = pubKey.GetID();
         return true;
     }
-	// Token
-	else if (whichType == TX_TOKEN)
+    // Token
+    else if (whichType == TX_TOKEN)
     {
         addressRet = CKeyID(uint160(vSolutions[0]));
         return true;

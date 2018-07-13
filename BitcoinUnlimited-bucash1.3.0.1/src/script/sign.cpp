@@ -125,7 +125,7 @@ static bool SignStep(const BaseSignatureCreator &creator,
         scriptSigRet << OP_0; // workaround CHECKMULTISIG bug
         return (SignN(vSolutions, creator, scriptPubKey, scriptSigRet));
 	
-	// Token
+    // Token
     case TX_TOKEN:
         keyID = CKeyID(uint160(vSolutions[0]));
         if (!Sign1(keyID, creator, scriptPubKey, scriptSigRet))
@@ -314,7 +314,6 @@ static CScript CombineSignatures(const CScript &scriptPubKey,
 		
     // Token
     case TX_TOKEN:
-        // Signatures are bigger than placeholders or empty scripts:
         if (sigs1.empty() || sigs1[0].empty())
             return PushAll(sigs2);
         return PushAll(sigs1);
