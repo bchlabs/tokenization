@@ -1495,7 +1495,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             const CTxOut &txout = vout[i];
-            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
+            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);	
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit(false) : value out of range");
         }
@@ -1518,6 +1518,8 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
         return mCredit;
 
     CAmount nCredit = 0;
+    CAmount tmpCredit = nCredit;
+
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
@@ -1528,6 +1530,10 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetTokenAvailableCredit() : value out of range");
 			
+	    if (nCredit == tmpCredit)
+                continue; 
+            
+	    tmpCredit = nCredit;
 	    if (txout.scriptPubKey.IsPayToScriptHash())
 	    {
 	        CTxDestination address;
@@ -1538,8 +1544,7 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
 		    if (pwalletMain->GetCScript(hash, redeemScript))
 		    {
 			if (!redeemScript.IsPayToToken())
-			    continue;
-						
+			    continue;						
 			int namesize = redeemScript[1];
 			int amountsize = redeemScript[2 + namesize];
 			std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
@@ -1550,8 +1555,8 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
 		    }
 		}
 	    }
-	    else if (txout.scriptPubKey.IsPayToToken())
-	    {
+	    else if (txout.scriptPubKey.IsPayToToken())	
+            {
 		int namesize = txout.scriptPubKey[1];
 		int amountsize = txout.scriptPubKey[2 + namesize];
 		std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
