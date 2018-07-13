@@ -43,8 +43,8 @@ static const CRPCConvertParam vRPCConvertParams[] = {
     {"getrawmempool", 0}, {"estimatefee", 0}, {"estimatepriority", 0}, {"estimatesmartfee", 0},
     {"estimatesmartpriority", 0}, {"prioritisetransaction", 1}, {"prioritisetransaction", 2}, {"setban", 2},
     {"setban", 3}, {"rollbackchain", 0}, {"rollbackchain", 1},
-	{"createtokentx", 0}, {"createtokentx", 1}, {"signtokentx", 1},
-	// Token
+    {"createtokentx", 0}, {"createtokentx", 1}, {"signtokentx", 1},
+    // Token
 };
 
 class CRPCConvertTable

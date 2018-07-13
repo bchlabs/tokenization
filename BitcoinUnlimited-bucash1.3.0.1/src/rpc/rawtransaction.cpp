@@ -1000,7 +1000,7 @@ UniValue sendrawtransaction(const UniValue &params, bool fHelp)
 // Token
 UniValue createtokenscript(const UniValue &params, bool fHelp)
 {
-	if (fHelp || params.size() != 2)
+        if (fHelp || params.size() != 2)
 		throw runtime_error("createtokenscript \"tokename\" \"tokensupply\" \n");
 
 	LOCK(cs_main);
@@ -1012,7 +1012,7 @@ UniValue createtokenscript(const UniValue &params, bool fHelp)
 
 	CAmount supply = atoll(params[1].get_str().c_str());
 	if (supply > MAX_TOKEN_SUPPLY)
-		throw runtime_error("tokensupply is out of range");
+		throw runtime_error("tokensupply is out of range, max supply is 10**18");
 
 	CPubKey newKey;
 	if (!pwalletMain->GetKeyFromPool(newKey))
@@ -1042,37 +1042,37 @@ UniValue createtokentx(const UniValue &params, bool fHelp)
 {
 	if (fHelp || params.size() != 2)
 		throw runtime_error(
-				"createtokentx [{\"txid\":\"id\",\"vout\":n},...] [{\"address\":\"xxx\", \"amount\":x.xxx, "
-				"\"tokenname\":\"xxx\", \"tokenamount\":xxx, \"data\":\"hex\"},...] \n"
-				"\nCreate a transaction spending the given inputs and creating new outputs.\n"
-				"Outputs can be addresses or data.\n"
-				"Returns hex-encoded raw transaction.\n"
-				"Note that the transaction's inputs are not signed, and\n"
-				"it is not stored in the wallet or transmitted to the network.\n"
+			"createtokentx [{\"txid\":\"id\",\"vout\":n},...] [{\"address\":\"xxx\", \"amount\":x.xxx, "
+			"\"tokenname\":\"xxx\", \"tokenamount\":xxx, \"data\":\"hex\"},...] \n"
+			"\nCreate a transaction spending the given inputs and creating new outputs.\n"
+			"Outputs can be addresses or data.\n"
+			"Returns hex-encoded raw transaction.\n"
+			"Note that the transaction's inputs are not signed, and\n"
+			"it is not stored in the wallet or transmitted to the network.\n"
 
-				"\nArguments:\n"
-				"1. \"transactions\"        (string, required) A json array of json objects\n"
-				"     [\n"
-				"       {\n"
-				"         \"txid\":\"id\",    (string, required) The transaction id\n"
-				"         \"vout\":n        (numeric, required) The output number\n"
-				"       }\n"
-				"       ,...\n"
-				"     ]\n"
-				"2. \"outputs\"             (string, required) a json object with outputs\n"
-				"     [\n"
-				"       {\n"
-				"         \"address\":\"xxx\",    (string) The bitcoin address\n"
-				"         \"amount\":x.xxx,       (numeric or string) the numeric value (can be string) is the amount\n"
-				"         \"tokenname\":\"xxx\",      (string) The token name\n"
-				"         \"tokenamount\":xxx,    (string) The token amount\n"
-				"         \"data\":\"hex\",       (string) the value is hex encoded data\n"
-				"       }\n"
-				"       ,...\n"
-				"     ]\n"
+			"\nArguments:\n"
+			"1. \"transactions\"        (string, required) A json array of json objects\n"
+			"     [\n"
+			"       {\n"
+			"         \"txid\":\"id\",    (string, required) The transaction id\n"
+			"         \"vout\":n        (numeric, required) The output number\n"
+			"       }\n"
+			"       ,...\n"
+			"     ]\n"
+			"2. \"outputs\"             (string, required) a json object with outputs\n"
+			"     [\n"
+			"       {\n"
+			"         \"address\":\"xxx\",    (string) The bitcoin address\n"
+			"         \"amount\":x.xxx,       (numeric or string) the numeric value (can be string) is the amount\n"
+			"         \"tokenname\":\"xxx\",  (string) The token name\n"
+			"         \"tokenamount\":xxx,    (string) The token amount\n"
+			"         \"data\":\"hex\",       (string) the value is hex encoded data\n"
+			"       }\n"
+			"       ,...\n"
+			"     ]\n"
 
-				"\nResult:\n"
-				"\"transaction\"            (string) hex string of the transaction\n" );
+			"\nResult:\n"
+			"\"transaction\"            (string) hex string of the transaction\n" );
 
 	LOCK(cs_main);
 	RPCTypeCheck(params, boost::assign::list_of(UniValue::VARR)(UniValue::VARR), true);
@@ -1162,32 +1162,32 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 {
 	if (fHelp || params.size() < 1 || params.size() > 2)
 		throw runtime_error(
-				"signtokentx \"hexstring\" allow \n"
-				"\nSign inputs for raw transaction (serialized, hex-encoded).\n"
-				"this transaction depends on but may not yet be in the block chain.\n"
+			"signtokentx \"hexstring\" melt \n"
+			"\nSign inputs for raw transaction (serialized, hex-encoded).\n"
+			"this transaction depends on but may not yet be in the block chain.\n"
 #ifdef ENABLE_WALLET
-				+ HelpRequiringPassphrase() +
-				"\n"
+			+ HelpRequiringPassphrase() +
+			"\n"
 #endif
-				"\nArguments:\n"
-				"1. \"hexstring\"     (string, required) The transaction hex string\n"
-				"2. allow             (boolean, optional, default = false) allow burn token \n"
+			"\nArguments:\n"
+			"1. \"hexstring\"     (string, required) The transaction hex string\n"
+			"2. melt              (boolean, optional, default = false) allow melt token \n"
 
-				"\nResult:\n"
-				"{\n"
-				"  \"hex\" : \"value\",         (string) The hex-encoded raw transaction with signature(s)\n"
-				"  \"complete\" : true|false,   (boolean) If the transaction has a complete set of signatures\n"
-				"  \"errors\" : [               (json array of objects) Script verification errors (if there are any)\n"
-				"    {\n"
-				"      \"txid\" : \"hash\",     (string) The hash of the referenced, previous transaction\n"
-				"      \"vout\" : n,            (numeric) The index of the output to spent and used as input\n"
-				"      \"scriptSig\" : \"hex\", (string) The hex-encoded signature script\n"
-				"      \"sequence\" : n,        (numeric) Script sequence number\n"
-				"      \"error\" : \"text\"     (string) Verification or signing error related to the input\n"
-				"    }\n"
-				"    ,...\n"
-				"  ]\n"
-				"}\n" );
+			"\nResult:\n"
+			"{\n"
+			"  \"hex\" : \"value\",         (string) The hex-encoded raw transaction with signature(s)\n"
+			"  \"complete\" : true|false,   (boolean) If the transaction has a complete set of signatures\n"
+			"  \"errors\" : [               (json array of objects) Script verification errors (if there are any)\n"
+			"    {\n"
+			"      \"txid\" : \"hash\",     (string) The hash of the referenced, previous transaction\n"
+			"      \"vout\" : n,            (numeric) The index of the output to spent and used as input\n"
+			"      \"scriptSig\" : \"hex\", (string) The hex-encoded signature script\n"
+			"      \"sequence\" : n,        (numeric) Script sequence number\n"
+			"      \"error\" : \"text\"     (string) Verification or signing error related to the input\n"
+			"    }\n"
+			"    ,...\n"
+			"  ]\n"
+			"}\n" );
 
 #ifdef ENABLE_WALLET
 	LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
@@ -1287,7 +1287,6 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 		const CAmount &amount = coin.out.nValue;
 
 		// Token
-		// std::cout << "prevPubKey: " << FormatScript(prevPubKey) << std::endl;
 		if (prevPubKey.IsPayToScriptHash())
 		{
 			vector<unsigned char> hashBytes(prevPubKey.begin() + 2, prevPubKey.begin() + 22);
@@ -1295,7 +1294,6 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 			TransactionSignatureCreator creator(&keystore, &txToConst, i, amount, nHashType);
 			CScript scriptSigRet;
 			creator.KeyStore().GetCScript(uint160(hashBytes), scriptSigRet);
-			// std::cout << "redeemScript: " << FormatScript(scriptSigRet) << std::endl;
 
 			if (scriptSigRet.IsPayToToken()) {
 				int namesize = scriptSigRet[1];
@@ -1307,7 +1305,7 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 				valtype vec(scriptSigRet.begin() + 3 + namesize, scriptSigRet.begin() + 3 + namesize + amountsize);
 				CAmount amount = CScriptNum(vec, true).getint64();
 				if (amount > MAX_TOKEN_SUPPLY) 
-					throw runtime_error("amount out of range");
+					throw runtime_error("token amount out of range");
 
 				CAmount temp = mVinAmount[name];
 				temp += amount;
@@ -1327,7 +1325,7 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 			valtype vec(prevPubKey.begin() + 3 + namesize, prevPubKey.begin() + 3 + namesize + amountsize);
 			CAmount amount = CScriptNum(vec, true).getint64();
 			if (amount > MAX_TOKEN_SUPPLY) 
-				throw runtime_error("amount out of range");
+				throw runtime_error("token amount out of range");
 
 			CAmount temp = mVinAmount[name];
 			temp += amount;
@@ -1383,9 +1381,6 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 		result.push_back(Pair("errors", vErrors));
 	}
 
-	// for (auto &it: mVinAmount)
-	// std::cout << "mVinAmount: " << it.first << " : "<< it.second << std::endl;
-
 	for (unsigned int i = 0; i < mergedTx.vout.size(); i++)
 	{
 		CTxOut &txout = mergedTx.vout[i];
@@ -1411,12 +1406,9 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 		}	
 	}
 
-	// for (auto &it: mVoutAmount)
-	// std::cout << "mVoutAmount: " << it.first << " : "<< it.second << std::endl;
-
-	bool allow = false;
+	bool melt = false;
 	if (params.size() > 1)
-		allow = params[1].get_bool();
+		melt = params[1].get_bool();
 
 	for (auto &it: mVinAmount)
 	{
@@ -1424,9 +1416,9 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 		{
 			throw runtime_error(it.first + " vin token amount < vout token amount");	
 		}
-		else if (!allow && it.second > mVoutAmount[it.first])
+		else if (!melt && it.second > mVoutAmount[it.first])
 		{
-			throw runtime_error(it.first + " vin token amount > vout token amount," + std::to_string(it.second - mVoutAmount[it.first]) + " token will be burned");
+			throw runtime_error(it.first + " vin token amount > vout token amount, " + std::to_string(it.second - mVoutAmount[it.first]) + " token will be melted");
 		}
 	}
 
