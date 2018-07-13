@@ -1,7 +1,7 @@
 # tokenization for bch
 基于BCH实现发Token的功能  
-实现的思路是把Token的内容放在BCH脚本中, 依附在交易上, 通过BCH的交易来转移Token  
-扩展opcode: OP_TOKEN  
+实现的思路是把Token的内容放在BCH脚本中, 依附在交易上, 通过BCH的UTXO交易来转移Token  
+扩展opcode: OP_TOKEN (OP_NOP4)  
 添加rpc:
 ```
 createtokenscript  
@@ -32,14 +32,15 @@ OP_CHECKSIG
 ./bitcoin-cli sentoaddress pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 1
 ```  
 交易上链后就实现了Token的发行, 在这个例子中地址 pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 内有10000个gon, 同时  
-也有1个BCH  
+也有1个BCH 
+ 
 3. 查看Token数量  
-gettokenbalance 和 listtokenunspent 是用来查看Token余额的rpc
+gettokenbalance 和 listtokenunspent 是用来查看Token的rpc
 ```
 ./bitcoin-cli gettokenbalance  
 [  
 {  
- "tokenName": "gon",  
+ "token": "gon",  
  "tokenAmount": 10000  
 }  
 ]  
@@ -56,7 +57,7 @@ gettokenbalance 和 listtokenunspent 是用来查看Token余额的rpc
  "amount": 1.00000000,  
  "confirmations": 1,  
  "spendable": true,  
- "tokenName": "gon",  
+ "token": "gon",  
  "tokenAmount": 10000  
 }  
 ]
@@ -88,7 +89,7 @@ qzrsn9dhyvpgcwvrc28vkaylqee47amnacp2mt6ayp 上转移6000个gon, 可以这么操�
  "amount": 0.10000000,  
  "confirmations": 1,  
  "spendable": true,  
- "tokenName": "gon",  
+ "token": "gon",  
  "tokenAmount": 4000  
  }  
 ]
