@@ -2779,12 +2779,13 @@ UniValue listtokenunspent(const UniValue &params, bool fHelp)
             "    \"txid\" : \"txid\",        (string) the transaction id \n"
             "    \"vout\" : n,               (numeric) the vout value\n"
             "    \"address\" : \"address\",  (string) the bitcoin address\n"
-            "    \"account\" : \"account\",  (string) DEPRECATED. The associated account, or \"\" for the default "
-            "account\n"
             "    \"scriptPubKey\" : \"key\", (string) the script key\n"
+            "    \"redeemScript\" : \"script\", (string) the redeem script\n"
             "    \"amount\" : x.xxx,         (numeric) the transaction amount in " +
             CURRENCY_UNIT + "\n"
                             "    \"confirmations\" : n       (numeric) The number of confirmations\n"
+                            "    \"token\" : \"token name\", (string) the token name\n"
+                            "    \"tokenAmount\" : \"token amount\", (numeric) the token amount\n"
                             "  }\n"
                             "  ,...\n"
                             "]\n" );
@@ -2805,71 +2806,70 @@ UniValue listtokenunspent(const UniValue &params, bool fHelp)
         CAmount nValue = out.tx->vout[out.i].nValue;
         const CScript &pk = out.tx->vout[out.i].scriptPubKey;
 		
-		if (pk.IsPayToScriptHash())
+	if (pk.IsPayToScriptHash())
+	{
+	    CTxDestination address;
+	    if (ExtractDestination(pk, address))
+	    {
+		const CScriptID &hash = boost::get<CScriptID>(address);
+		CScript redeemScript;
+		if (pwalletMain->GetCScript(hash, redeemScript))
 		{
-			CTxDestination address;
-			if (ExtractDestination(pk, address))
-			{
-				const CScriptID &hash = boost::get<CScriptID>(address);
-				CScript redeemScript;
-				if (pwalletMain->GetCScript(hash, redeemScript))
-				{
-					if (!redeemScript.IsPayToToken())
-						continue;
+		    if (!redeemScript.IsPayToToken())
+			continue;
 					
-					UniValue entry(UniValue::VOBJ);
-					entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
-					entry.push_back(Pair("vout", out.i));
-					CTxDestination address;
-					if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
-						entry.push_back(Pair("address", EncodeDestination(address)));
+		    UniValue entry(UniValue::VOBJ);
+		    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+		    entry.push_back(Pair("vout", out.i));
+		    CTxDestination address;
+		    if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+			entry.push_back(Pair("address", EncodeDestination(address)));
 					
-					entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+		    entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
                     entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
-					entry.push_back(Pair("satoshi", UniValue(nValue)));
-					entry.push_back(Pair("amount", ValueFromAmount(nValue)));
-					entry.push_back(Pair("confirmations", out.nDepth));
-					entry.push_back(Pair("spendable", out.fSpendable));
+		    entry.push_back(Pair("satoshi", UniValue(nValue)));
+		    entry.push_back(Pair("amount", ValueFromAmount(nValue)));
+		    entry.push_back(Pair("confirmations", out.nDepth));
+		    entry.push_back(Pair("spendable", out.fSpendable));
 					
-					int namesize = redeemScript[1];
-					int amountsize = redeemScript[2 + namesize];
-					std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-					std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-					std::string tokenName(vecName.begin(), vecName.end());
-					CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+		    int namesize = redeemScript[1];
+		    int amountsize = redeemScript[2 + namesize];
+		    std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
+		    std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
+		    std::string tokenName(vecName.begin(), vecName.end());
+		    CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
 					
-					entry.push_back(Pair("tokenName", tokenName));
-					entry.push_back(Pair("tokenAmount", tokenAmount));
-					results.push_back(entry);
-				}
-			}
-		}
-		else if (pk.IsPayToToken())
-		{
-			UniValue entry(UniValue::VOBJ);
-			entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
-			entry.push_back(Pair("vout", out.i));
-			CTxDestination address;
-			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
-				entry.push_back(Pair("address", EncodeDestination(address)));
+		    entry.push_back(Pair("token", tokenName));
+		    entry.push_back(Pair("tokenAmount", tokenAmount));
+		    results.push_back(entry);
+	        }
+	    }
+	}
+	else if (pk.IsPayToToken())
+	{
+	    UniValue entry(UniValue::VOBJ);
+	    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+	    entry.push_back(Pair("vout", out.i));
+	    CTxDestination address;
+	    if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+		entry.push_back(Pair("address", EncodeDestination(address)));
+		entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+		entry.push_back(Pair("satoshi", UniValue(nValue)));
+		entry.push_back(Pair("amount", ValueFromAmount(nValue)));
+		entry.push_back(Pair("confirmations", out.nDepth));
+		entry.push_back(Pair("spendable", out.fSpendable));
 			
-			entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
-			entry.push_back(Pair("satoshi", UniValue(nValue)));
-			entry.push_back(Pair("amount", ValueFromAmount(nValue)));
-			entry.push_back(Pair("confirmations", out.nDepth));
-			entry.push_back(Pair("spendable", out.fSpendable));
+		int namesize = pk[1];
+		int amountsize = pk[2 + namesize];
+		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+		std::string tokenName(vecName.begin(), vecName.end());
+		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
 			
-			int namesize = pk[1];
-			int amountsize = pk[2 + namesize];
-			std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-			std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
-			std::string tokenName(vecName.begin(), vecName.end());
-			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-			
-			entry.push_back(Pair("tokenName", tokenName));
-			entry.push_back(Pair("tokenAmount", tokenAmount));
-			results.push_back(entry);
-		}
+		entry.push_back(Pair("token", tokenName));
+		entry.push_back(Pair("tokenAmount", tokenAmount));
+		results.push_back(entry);
+	}
     }
     return results;
 }
@@ -2939,9 +2939,9 @@ static const CRPCCommand commands[] = {
     {"wallet",                "walletpassphrasechange",   &walletpassphrasechange,   true},
     {"wallet",                "walletpassphrase",         &walletpassphrase,         true},
     {"wallet",                "removeprunedfunds",        &removeprunedfunds,        true},
-	// Token
-	{"token",                 "listtokenunspent",         &listtokenunspent,         true},
-	{"token",                 "gettokenbalance",          &gettokenbalance,         true},
+    // Token
+    {"token",                 "listtokenunspent",         &listtokenunspent,         true},
+    {"token",                 "gettokenbalance",          &gettokenbalance,         true},
 };
 /* clang-format on */
 

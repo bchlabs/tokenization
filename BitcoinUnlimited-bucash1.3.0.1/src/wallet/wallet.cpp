@@ -1495,7 +1495,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             const CTxOut &txout = vout[i];
-            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
+            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);	
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit(false) : value out of range");
         }
@@ -1509,7 +1509,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
 // Token
 std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
 {
-	std::map<std::string, CAmount> mCredit;
+    std::map<std::string, CAmount> mCredit;
     if (pwallet == 0)
         return mCredit;
 
@@ -1518,6 +1518,8 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
         return mCredit;
 
     CAmount nCredit = 0;
+    CAmount tmpCredit = nCredit;
+
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
@@ -1526,40 +1528,43 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
             const CTxOut &txout = vout[i];
             nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
             if (!MoneyRange(nCredit))
-                throw std::runtime_error("CWalletTx::GetAvailableCredit(false) : value out of range");
+                throw std::runtime_error("CWalletTx::GetTokenAvailableCredit() : value out of range");
 			
-			if (txout.scriptPubKey.IsPayToScriptHash())
-			{
-				CTxDestination address;
-				if (ExtractDestination(txout.scriptPubKey, address))
-				{
-					const CScriptID &hash = boost::get<CScriptID>(address);
-					CScript redeemScript;
-					if (pwalletMain->GetCScript(hash, redeemScript))
-					{
-						if (!redeemScript.IsPayToToken())
-							continue;
-						
-						int namesize = redeemScript[1];
-						int amountsize = redeemScript[2 + namesize];
-						std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-						std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-						std::string tokenName(vecName.begin(), vecName.end());
-						CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-						mCredit[tokenName] = tokenAmount;
-					}
-				}
-			}
-			else if (txout.scriptPubKey.IsPayToToken())
-			{
-				int namesize = txout.scriptPubKey[1];
-				int amountsize = txout.scriptPubKey[2 + namesize];
-				std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
-				std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
-				std::string tokenName(vecName.begin(), vecName.end());
-				CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-				mCredit[tokenName] = tokenAmount;
-			}
+	    if (nCredit == tmpCredit)
+                continue; 
+            
+	    tmpCredit = nCredit;
+	    if (txout.scriptPubKey.IsPayToScriptHash())
+	    {
+	        CTxDestination address;
+		if (ExtractDestination(txout.scriptPubKey, address))
+		{
+		    const CScriptID &hash = boost::get<CScriptID>(address);
+		    CScript redeemScript;
+		    if (pwalletMain->GetCScript(hash, redeemScript))
+		    {
+			if (!redeemScript.IsPayToToken())
+			    continue;						
+			int namesize = redeemScript[1];
+			int amountsize = redeemScript[2 + namesize];
+			std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
+			std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
+			std::string tokenName(vecName.begin(), vecName.end());
+			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+			mCredit[tokenName] = tokenAmount;
+		    }
+		}
+	    }
+	    else if (txout.scriptPubKey.IsPayToToken())	
+            {
+		int namesize = txout.scriptPubKey[1];
+		int amountsize = txout.scriptPubKey[2 + namesize];
+		std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
+		std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
+		std::string tokenName(vecName.begin(), vecName.end());
+		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+		mCredit[tokenName] = tokenAmount;
+	    }
         }
     }
 
@@ -1746,29 +1751,29 @@ CAmount CWallet::GetBalance() const
 // Token
 UniValue CWallet::GetTokenBalance() const
 {
-	std::map<std::string, CAmount> mBalance;
+    std::map<std::string, CAmount> mBalance;
     {
         LOCK2(cs_main, cs_wallet);
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const CWalletTx *pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-			{
-				std::map<std::string, CAmount> tmp = pcoin->GetTokenAvailableCredit();
-				for (auto &it: tmp)
-				    mBalance[it.first] += it.second;
-			}
+	    {
+		std::map<std::string, CAmount> tmp = pcoin->GetTokenAvailableCredit();
+		for (auto &it: tmp)
+		    mBalance[it.first] += it.second;
+	    }
         }
     }
 
-	UniValue result(UniValue::VARR);
+    UniValue result(UniValue::VARR);
     for (auto &it: mBalance) 
-	{
-		UniValue obj(UniValue::VOBJ);
-		obj.push_back(Pair("tokenName", it.first));
-		obj.push_back(Pair("tokenAmount", it.second));	
-		result.push_back(obj);
-	}	
+    {
+	UniValue obj(UniValue::VOBJ);
+	obj.push_back(Pair("token", it.first));
+	obj.push_back(Pair("tokenAmount", it.second));	
+	result.push_back(obj);
+    }	
     return result;
 }
 

@@ -235,11 +235,7 @@ const char *GetOpName(opcodetype opcode)
         return "OP_CHECKMULTISIG";
     case OP_CHECKMULTISIGVERIFY:
         return "OP_CHECKMULTISIGVERIFY";
-
-	// Token
-	case OP_TOKEN:
-	    return "OP_TOKEN";
-
+   
     // expanson
     case OP_NOP1:
         return "OP_NOP1";
@@ -249,6 +245,11 @@ const char *GetOpName(opcodetype opcode)
         return "OP_CHECKSEQUENCEVERIFY";
     // case OP_NOP4:
         // return "OP_NOP4";
+
+    // Token
+    case OP_TOKEN:
+	return "OP_TOKEN";
+
     case OP_NOP5:
         return "OP_NOP5";
     case OP_NOP6:
@@ -421,8 +422,8 @@ bool CScript::IsPayToScriptHash() const
 // Token
 bool CScript::IsPayToToken() const
 {
-	int size = this->size();
-	return size > 30 && (*this)[0] == OP_TOKEN && (*this)[size - 1] == OP_CHECKSIG && (*this)[size - 2] == OP_EQUALVERIFY 
+    int size = this->size();
+    return size > 30 && (*this)[0] == OP_TOKEN && (*this)[size - 1] == OP_CHECKSIG && (*this)[size - 2] == OP_EQUALVERIFY 
        && (*this)[size - 24] == OP_HASH160 && (*this)[size - 25] == OP_DUP && (*this)[size - 26] == OP_DROP && (*this)[size - 27] == OP_DROP;
 }
 

@@ -217,9 +217,8 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
     CAmount nFees = 0;
     int nSpendHeight = -1;
 	
-	std::map<std::string, CAmount> mVinToken;
-	std::map<std::string, CAmount> mVoutToken;
-	CAmount maxAmount = 1000000000000000000;
+    std::map<std::string, CAmount> mVinToken;
+    std::map<std::string, CAmount> mVoutToken;
 	
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
@@ -242,92 +241,86 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
         if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn))
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
 		
-		// Token
-		CScript prevPubkey = coin.out.scriptPubKey;
-		if (prevPubkey.IsPayToScriptHash())
-		{
-			std::vector<unsigned char> vec(prevPubkey.begin() + 2, prevPubkey.begin() + 22);
-			CScriptID hash = CScriptID(uint160(vec));
-			CScript redeemScript;
-			if (pwalletMain->GetCScript(hash, redeemScript))
-			{
-				// std::cout << "redeemScript: " << FormatScript(redeemScript) << std::endl;
-				if (!redeemScript.IsPayToToken())
-					continue;
+	// Token
+	CScript prevPubkey = coin.out.scriptPubKey;
+	if (prevPubkey.IsPayToScriptHash())
+	{
+	    std::vector<unsigned char> vec(prevPubkey.begin() + 2, prevPubkey.begin() + 22);
+	    CScriptID hash = CScriptID(uint160(vec));
+	    CScript redeemScript;
+	    if (pwalletMain->GetCScript(hash, redeemScript))
+	    {
+		if (!redeemScript.IsPayToToken())
+		    continue;
 				
-				int namesize = redeemScript[1];
-				int amountsize = redeemScript[2 + namesize];
-				std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-				std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-				std::string tokenName(vecName.begin(), vecName.end());
-				CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-				if (tokenAmount > maxAmount) 
-					return state.DoS(100, false, REJECT_INVALID, "amount out of range");
+		int namesize = redeemScript[1];
+		int amountsize = redeemScript[2 + namesize];
+		std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
+		std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
+		std::string tokenName(vecName.begin(), vecName.end());
+		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+		if (tokenAmount > MAX_TOKEN_SUPPLY) 
+		    return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
 				
-				CAmount temp = mVinToken[tokenName];
-				temp += tokenAmount;
-				if (temp > maxAmount)
-					return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
-				mVinToken[tokenName] = temp;
-			}
-		}
-		else if (prevPubkey.IsPayToToken())
-		{
-			int namesize = prevPubkey[1];
-			int amountsize = prevPubkey[2 + namesize];
-			std::vector<unsigned char> vecName(prevPubkey.begin() + 2, prevPubkey.begin() + 2 + namesize);
-			std::vector<unsigned char> vecAmount(prevPubkey.begin() + 3 + namesize, prevPubkey.begin() + 3 + namesize + amountsize);
-			std::string tokenName(vecName.begin(), vecName.end());
-			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-			mVinToken[tokenName] = tokenAmount;
+		CAmount temp = mVinToken[tokenName];
+		temp += tokenAmount;
+		if (temp > MAX_TOKEN_SUPPLY)
+		    return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
+		mVinToken[tokenName] = temp;
+	    }
+	}
+	else if (prevPubkey.IsPayToToken())
+	{
+	    int namesize = prevPubkey[1];
+	    int amountsize = prevPubkey[2 + namesize];
+	    std::vector<unsigned char> vecName(prevPubkey.begin() + 2, prevPubkey.begin() + 2 + namesize);
+	    std::vector<unsigned char> vecAmount(prevPubkey.begin() + 3 + namesize, prevPubkey.begin() + 3 + namesize + amountsize);
+	    std::string tokenName(vecName.begin(), vecName.end());
+	    CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+	    mVinToken[tokenName] = tokenAmount;
 			
-			if (tokenAmount > maxAmount) 
-				return state.DoS(100, false, REJECT_INVALID, "amount out of range");
+	    if (tokenAmount > MAX_TOKEN_SUPPLY) 
+		return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
 			
-			CAmount temp = mVinToken[tokenName];
-			temp += tokenAmount;
-			if (temp > maxAmount)
-				return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
-			mVinToken[tokenName] = temp;
-		}
+	    CAmount temp = mVinToken[tokenName];
+	    temp += tokenAmount;
+	    if (temp > MAX_TOKEN_SUPPLY)
+		return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
+	    mVinToken[tokenName] = temp;
+	}
     }
 	
-	for (unsigned int i = 0; i < tx.vout.size(); i++)
+    for (unsigned int i = 0; i < tx.vout.size(); i++)
     {
-		CTxOut txout = tx.vout[i];
-		CScript outScript = txout.scriptPubKey;
-		if (outScript.IsPayToToken())
-		{
-			int namesize = outScript[1];
-			int amountsize = outScript[2 + namesize];
-			
-			std::vector<unsigned char> vecName(outScript.begin() + 2, outScript.begin() + 2 + namesize);
-			std::string name(vecName.begin(), vecName.end());
-			
-			std::vector<unsigned char> vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
-			CAmount amount = CScriptNum(vec, true).getint64();
-			if (amount > maxAmount) 
-				return state.DoS(100, false, REJECT_INVALID, "amount out of range");
-			 
-			CAmount temp = mVoutToken[name];
-			temp += amount;
-			if (temp > maxAmount)
-				return state.DoS(100, false, REJECT_INVALID, "vout amount out of range");
-			mVoutToken[name] = temp;
-		}	
-	}
-	
-	// for (auto &it: mVinToken)
-		// std::cout << "mVinToken: " << it.first << " : "<< it.second << std::endl;
-	// for (auto &it: mVoutToken)
-		// std::cout << "mVoutToken: " << it.first << " : "<< it.second << std::endl;
-	
-	for (auto &it: mVinToken)
+	CTxOut txout = tx.vout[i];
+	CScript outScript = txout.scriptPubKey;
+	if (outScript.IsPayToToken())
 	{
-		if (it.second < mVoutToken[it.first])
-			return state.DoS(100, false, REJECT_INVALID, it.first + " vin token amount < vout token amount");
-	}
-	// Token
+	    int namesize = outScript[1];
+	    int amountsize = outScript[2 + namesize];
+			
+	    std::vector<unsigned char> vecName(outScript.begin() + 2, outScript.begin() + 2 + namesize);
+	    std::string name(vecName.begin(), vecName.end());
+			
+	    std::vector<unsigned char> vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
+	    CAmount amount = CScriptNum(vec, true).getint64();
+	    if (amount > MAX_TOKEN_SUPPLY) 
+	        return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
+			 
+	    CAmount temp = mVoutToken[name];
+	    temp += amount;
+	    if (temp > MAX_TOKEN_SUPPLY)
+		return state.DoS(100, false, REJECT_INVALID, "vout amount out of range");
+	    mVoutToken[name] = temp;
+	}	
+    }
+	
+    for (auto &it: mVinToken)
+    {
+	if (it.second < mVoutToken[it.first])
+	    return state.DoS(100, false, REJECT_INVALID, it.first + "vin token amount < vout token amount");
+    }
+    // Token
 			
     if (nValueIn < tx.GetValueOut())
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-in-belowout", false,

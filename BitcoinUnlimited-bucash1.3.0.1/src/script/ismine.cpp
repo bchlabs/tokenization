@@ -123,8 +123,8 @@ isminetype IsMine(const CKeyStore &keystore, const CScript &scriptPubKey, CBlock
             return ISMINE_SPENDABLE;
         break;
 		
-	// Token
-	case TX_TOKEN:
+    // Token
+    case TX_TOKEN:
         keyID = CKeyID(uint160(vSolutions[0]));
         if (keystore.HaveKey(keyID))
             return ISMINE_SPENDABLE;

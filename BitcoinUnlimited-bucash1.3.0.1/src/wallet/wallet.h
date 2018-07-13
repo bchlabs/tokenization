@@ -364,8 +364,8 @@ public:
     CAmount GetImmatureCredit(bool fUseCache = true) const;
     CAmount GetAvailableCredit(bool fUseCache = true) const;
 	
-	// Token
-	std::map<std::string, CAmount> GetTokenAvailableCredit() const;
+    // Token
+    std::map<std::string, CAmount> GetTokenAvailableCredit() const;
 	
     CAmount GetImmatureWatchOnlyCredit(const bool &fUseCache = true) const;
     CAmount GetAvailableWatchOnlyCredit(const bool &fUseCache = true) const;
@@ -744,9 +744,9 @@ public:
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
     CAmount GetBalance() const;
-	
-	// Token
-	UniValue GetTokenBalance() const;
+
+    // Token
+    UniValue GetTokenBalance() const;
 	
     CAmount GetUnconfirmedBalance() const;
     CAmount GetImmatureBalance() const;
