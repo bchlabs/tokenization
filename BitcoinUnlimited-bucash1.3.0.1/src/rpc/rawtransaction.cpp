@@ -1011,8 +1011,7 @@ UniValue createtokenscript(const UniValue &params, bool fHelp)
 	std::string name = params[0].get_str();
 
 	CAmount supply = atoll(params[1].get_str().c_str());
-	CAmount max_supply = 1000000000000000000;
-	if (supply > max_supply)
+	if (supply > MAX_TOKEN_SUPPLY)
 		throw runtime_error("tokensupply is out of range");
 
 	CPubKey newKey;
@@ -1273,7 +1272,6 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 
 	std::map<std::string, CAmount> mVinAmount;
 	std::map<std::string, CAmount> mVoutAmount;
-	CAmount maxAmount = 1000000000000000000;
 
 	// Sign what we can:
 	for (unsigned int i = 0; i < mergedTx.vin.size(); i++)
@@ -1308,12 +1306,12 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 
 				valtype vec(scriptSigRet.begin() + 3 + namesize, scriptSigRet.begin() + 3 + namesize + amountsize);
 				CAmount amount = CScriptNum(vec, true).getint64();
-				if (amount > maxAmount) 
+				if (amount > MAX_TOKEN_SUPPLY) 
 					throw runtime_error("amount out of range");
 
 				CAmount temp = mVinAmount[name];
 				temp += amount;
-				if (temp > maxAmount)
+				if (temp > MAX_TOKEN_SUPPLY)
 					throw runtime_error("vinAmount out of range");
 				mVinAmount[name] = temp;
 			}
@@ -1328,12 +1326,12 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 
 			valtype vec(prevPubKey.begin() + 3 + namesize, prevPubKey.begin() + 3 + namesize + amountsize);
 			CAmount amount = CScriptNum(vec, true).getint64();
-			if (amount > maxAmount) 
+			if (amount > MAX_TOKEN_SUPPLY) 
 				throw runtime_error("amount out of range");
 
 			CAmount temp = mVinAmount[name];
 			temp += amount;
-			if (temp > maxAmount)
+			if (temp > MAX_TOKEN_SUPPLY)
 				throw runtime_error("vinAmount out of range");
 			mVinAmount[name] = temp;
 		}		
@@ -1402,12 +1400,12 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 
 			valtype vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
 			CAmount amount = CScriptNum(vec, true).getint64();
-			if (amount > maxAmount) 
+			if (amount > MAX_TOKEN_SUPPLY) 
 				throw runtime_error("amount out of range");
 
 			CAmount temp = mVoutAmount[name];
 			temp += amount;
-			if (temp > maxAmount)
+			if (temp > MAX_TOKEN_SUPPLY)
 				throw runtime_error("voutAmount out of range");
 			mVoutAmount[name] = temp;
 		}	

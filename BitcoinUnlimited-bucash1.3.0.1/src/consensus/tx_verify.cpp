@@ -217,9 +217,8 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
     CAmount nFees = 0;
     int nSpendHeight = -1;
 	
-	std::map<std::string, CAmount> mVinToken;
-	std::map<std::string, CAmount> mVoutToken;
-	CAmount maxAmount = 1000000000000000000;
+    std::map<std::string, CAmount> mVinToken;
+    std::map<std::string, CAmount> mVoutToken;
 	
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
@@ -261,12 +260,12 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 				std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
 				std::string tokenName(vecName.begin(), vecName.end());
 				CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-				if (tokenAmount > maxAmount) 
+				if (tokenAmount > MAX_TOKEN_SUPPLY) 
 					return state.DoS(100, false, REJECT_INVALID, "amount out of range");
 				
 				CAmount temp = mVinToken[tokenName];
 				temp += tokenAmount;
-				if (temp > maxAmount)
+				if (temp > MAX_TOKEN_SUPPLY)
 					return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
 				mVinToken[tokenName] = temp;
 			}
@@ -281,12 +280,12 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
 			mVinToken[tokenName] = tokenAmount;
 			
-			if (tokenAmount > maxAmount) 
+			if (tokenAmount > MAX_TOKEN_SUPPLY) 
 				return state.DoS(100, false, REJECT_INVALID, "amount out of range");
 			
 			CAmount temp = mVinToken[tokenName];
 			temp += tokenAmount;
-			if (temp > maxAmount)
+			if (temp > MAX_TOKEN_SUPPLY)
 				return state.DoS(100, false, REJECT_INVALID, "vinAmount out of range");
 			mVinToken[tokenName] = temp;
 		}
@@ -306,12 +305,12 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 			
 			std::vector<unsigned char> vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
 			CAmount amount = CScriptNum(vec, true).getint64();
-			if (amount > maxAmount) 
+			if (amount > MAX_TOKEN_SUPPLY) 
 				return state.DoS(100, false, REJECT_INVALID, "amount out of range");
 			 
 			CAmount temp = mVoutToken[name];
 			temp += amount;
-			if (temp > maxAmount)
+			if (temp > MAX_TOKEN_SUPPLY)
 				return state.DoS(100, false, REJECT_INVALID, "vout amount out of range");
 			mVoutToken[name] = temp;
 		}	
