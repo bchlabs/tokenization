@@ -37,6 +37,8 @@
 
 #include <univalue.h>
 
+#include <iostream>
+
 using namespace std;
 
 typedef vector<unsigned char> valtype;
@@ -998,9 +1000,272 @@ UniValue sendrawtransaction(const UniValue &params, bool fHelp)
 
 
 // Token
+UniValue tokenissue(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "tokenissue \"supply\" \n"
+            "\nIssue a new token, token id is one of your UTXO's txid.\n"
+            "The total amount of token must be less than 10**18.\n"
+            "Returns hex-encoded raw transaction.\n"
+
+            "\nArguments:\n"
+            "1. \"supply\":    (string, required) token supply\n"
+            "\nResult:\n"
+            "\"transaction\"   (string) hex string of the transaction\n");
+
+#ifdef ENABLE_WALLET
+	LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
+#else
+	LOCK(cs_main);
+#endif
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
+    if (params[0].isNull())
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    // check supply is valid
+    std::string supply = params[0].get_str();
+    CAmount nSupply = atoll(supply.c_str());
+    if (nSupply <= 0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply must be positive");
+    if (nSupply > MAX_TOKEN_SUPPLY)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply is out of range, max supply is 10**18");
+
+    // calaulate enough utxo
+    CAmount defaultSupplyAmount = 0.01 * COIN;
+    CAmount defaultSupplyFee = 0.0001 * COIN;
+
+    std::vector<COutput> utxo;
+    CAmount utxoAmount = 0;
+
+    UniValue results(UniValue::VARR);
+    std::vector<COutput> vecOutputs;
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    BOOST_FOREACH (const COutput &out, vecOutputs)
+    {
+        const CScript &pk = out.tx->vout[out.i].scriptPubKey;
+        if (pk.IsPayToScriptHash())
+        {
+            std::vector<unsigned char> vec(pk.begin() + 2, pk.begin() + 22);
+            CScriptID hash = CScriptID(uint160(vec));
+            CScript redeemScript;
+            if (pwalletMain->GetCScript(hash, redeemScript))
+            {
+                if (redeemScript.IsPayToToken())
+                {
+                	std::cout << "IsPayToToken111" << std::endl;
+                    continue;
+                }
+            }
+        }
+        else if (pk.IsPayToToken()) 
+        {
+        	std::cout << "IsPayToToken222" << std::endl;
+            continue;
+        }
+
+        CAmount nValue = out.tx->vout[out.i].nValue;
+        utxoAmount += nValue;
+        if (utxoAmount > (defaultSupplyAmount + defaultSupplyFee))
+        {
+        	utxo.push_back(out);
+        	break;
+        }  
+    }
+
+    // check balance is enough
+    if (utxoAmount < (defaultSupplyAmount + defaultSupplyFee))
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "balance is not enough for token issue, at least 0.0101BCH");
+
+    // create tx
+    CMutableTransaction rawTx;
+    uint32_t nSequence = std::numeric_limits<uint32_t>::max();
+    for (COutput out: utxo)
+    {
+        CTxIn in(COutPoint(out.tx->GetHash(), out.i), CScript(), nSequence);
+        rawTx.vin.push_back(in);      
+    }
+
+    CPubKey newKey;
+    if (!pwalletMain->GetKeyFromPool(newKey))
+        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
+    CKeyID keyID = newKey.GetID();
+    CScript scriptPubKey = GetScriptForDestination(keyID);
+
+    // TODO utxo[0].tx->GetHash().GetHex() 
+    // TODO put hex into script directly
+    std::string tokenid = utxo[0].tx->GetHash().ToString();
+    CScript script = CScript() << OP_TOKEN << ToByteVector(tokenid) << CScriptNum(nSupply);
+    script << OP_DROP << OP_DROP;
+    script += scriptPubKey;
+
+    CScriptID innerID(script);
+    std::string address = EncodeDestination(innerID);
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("tokenID", tokenid));
+    result.push_back(Pair("tokenAddress", address));
+    result.push_back(Pair("tokenScript", HexStr(script.begin(), script.end())));
+
+    pwalletMain->AddCScript(script);
+    pwalletMain->SetAddressBook(innerID, "", "token");
+
+    CTxOut supplyOut(defaultSupplyAmount, script);
+    rawTx.vout.push_back(supplyOut);
+
+    CAmount chargeAmount = utxoAmount - defaultSupplyAmount - defaultSupplyFee;
+    CTxOut chargeOut(chargeAmount, scriptPubKey);
+    rawTx.vout.push_back(chargeOut);
+ 
+    // sign tx
+    // Fetch previous transactions (inputs):
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    {
+        READLOCK(mempool.cs);
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+
+        BOOST_FOREACH (const CTxIn &txin, rawTx.vin)
+        {
+            view.AccessCoin(txin.prevout); // Load entries from viewChain into view; can fail.
+        }
+
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    CBasicKeyStore tempKeystore;
+
+#ifdef ENABLE_WALLET
+    if (pwalletMain)
+        EnsureWalletIsUnlocked();
+#endif
+
+#ifdef ENABLE_WALLET
+    const CKeyStore &keystore = (!pwalletMain ? tempKeystore : *pwalletMain);
+#else
+    const CKeyStore &keystore = tempKeystore;
+#endif
+
+    int nHashType = SIGHASH_ALL;
+    bool pickedForkId = false;
+    if (!pickedForkId) // If the user didn't specify, use the configured default for the hash type
+    {
+        if (IsUAHFforkActiveOnNextBlock(chainActive.Tip()->nHeight))
+        {
+            nHashType |= SIGHASH_FORKID;
+            pickedForkId = true;
+        }
+    }
+
+    bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
+
+    // Script verification errors
+    UniValue vErrors(UniValue::VARR);
+
+    // Use CTransaction for the constant parts of the
+    // transaction to avoid rehashing.
+    const CTransaction txConst(rawTx);
+
+    // Sign what we can:
+    for (unsigned int i = 0; i < rawTx.vin.size(); i++)
+    {
+        CTxIn &txin = rawTx.vin[i];
+        const Coin &coin = view.AccessCoin(txin.prevout);
+        if (coin.IsSpent())
+        {
+            TxInErrorToJSON(txin, vErrors, "Input not found or already spent");
+            continue;
+        }
+        const CScript &prevPubKey = coin.out.scriptPubKey;
+        const CAmount &amount = coin.out.nValue;
+
+        // Only sign SIGHASH_SINGLE if there's a corresponding output:
+        if (!fHashSingle || (i < rawTx.vout.size()))
+            SignSignature(keystore, prevPubKey, rawTx, i, amount, nHashType);
+
+        // ... and merge in other signatures:
+        if (pickedForkId)
+        {
+            txin.scriptSig = CombineSignatures(prevPubKey,
+                TransactionSignatureChecker(&txConst, i, amount, SCRIPT_ENABLE_SIGHASH_FORKID), txin.scriptSig, rawTx.vin[i].scriptSig);
+            ScriptError serror = SCRIPT_ERR_OK;
+
+            if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_ENABLE_SIGHASH_FORKID,
+                    MutableTransactionSignatureChecker(&rawTx, i, amount, SCRIPT_ENABLE_SIGHASH_FORKID), &serror))
+            {
+                TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+            }
+		}
+		else
+		{
+            txin.scriptSig = CombineSignatures(prevPubKey, TransactionSignatureChecker(&txConst, i, amount, 0),
+                        txin.scriptSig, rawTx.vin[i].scriptSig);
+            ScriptError serror = SCRIPT_ERR_OK;
+
+            if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS,
+                        MutableTransactionSignatureChecker(&rawTx, i, amount, 0), &serror))
+            {
+                TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+            }
+        }
+    }
+
+    if (!vErrors.empty())
+    {
+        result.push_back(Pair("signErrors", vErrors));
+        return result;
+    }
+
+    // send tx
+    uint256 hashTx = rawTx.GetHash();
+
+    bool fOverrideFees = false;
+    TransactionClass txClass = TransactionClass::DEFAULT;
+
+    bool fHaveChain = false;
+    bool fHaveMempool = mempool.exists(hashTx);
+    if (!fHaveMempool && !fHaveChain)
+    {
+        // push to local node and sync with wallets
+        CValidationState state;
+        bool fMissingInputs;
+        if (!AcceptToMemoryPool(mempool, state, rawTx, false, &fMissingInputs, false, !fOverrideFees, txClass))
+        {
+            if (state.IsInvalid())
+            {
+                throw JSONRPCError(
+                        RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
+            }
+            else
+            {
+                if (fMissingInputs)
+                {
+                    throw JSONRPCError(RPC_TRANSACTION_ERROR, "Missing inputs");
+                }
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, state.GetRejectReason());
+            }
+        }
+#ifdef ENABLE_WALLET
+        else
+            SyncWithWallets(rawTx, NULL, -1);
+#endif
+    }
+    else if (fHaveChain)
+    {
+        throw JSONRPCError(RPC_TRANSACTION_ALREADY_IN_CHAIN, "transaction already in block chain");
+    }
+    RelayTransaction(rawTx);
+
+    result.push_back(Pair("txid", hashTx.GetHex()));
+    return result;
+}
+
+
 UniValue createtokenscript(const UniValue &params, bool fHelp)
 {
-        if (fHelp || params.size() != 2)
+    if (fHelp || params.size() != 2)
 		throw runtime_error("createtokenscript \"tokename\" \"tokensupply\" \n");
 
 	LOCK(cs_main);
@@ -1427,19 +1692,20 @@ UniValue signtokentx(const UniValue &params, bool fHelp)
 
 
 static const CRPCCommand commands[] = {
-	//  category              name                      actor (function)         okSafeMode
-	//  --------------------- ------------------------  -----------------------  ----------
-	{"rawtransactions", "getrawtransaction", &getrawtransaction, true},
-	{"rawtransactions", "createrawtransaction", &createrawtransaction, true},
-	{"rawtransactions", "decoderawtransaction", &decoderawtransaction, true},
-	{"rawtransactions", "decodescript", &decodescript, true},
-	{"rawtransactions", "sendrawtransaction", &sendrawtransaction, false},
-	{"rawtransactions", "signrawtransaction", &signrawtransaction, false}, /* uses wallet if enabled */
-	{"blockchain", "gettxoutproof", &gettxoutproof, true}, {"blockchain", "verifytxoutproof", &verifytxoutproof, true},
-	// Token
-	{"token", "createtokenscript", &createtokenscript, true},
-	{"token", "createtokentx", &createtokentx, true},
-	{"token", "signtokentx", &signtokentx, true},
+    //  category              name                      actor (function)         okSafeMode
+    //  --------------------- ------------------------  -----------------------  ----------
+    {"rawtransactions", "getrawtransaction", &getrawtransaction, true},
+    {"rawtransactions", "createrawtransaction", &createrawtransaction, true},
+    {"rawtransactions", "decoderawtransaction", &decoderawtransaction, true},
+    {"rawtransactions", "decodescript", &decodescript, true},
+    {"rawtransactions", "sendrawtransaction", &sendrawtransaction, false},
+    {"rawtransactions", "signrawtransaction", &signrawtransaction, false}, /* uses wallet if enabled */
+    {"blockchain", "gettxoutproof", &gettxoutproof, true}, {"blockchain", "verifytxoutproof", &verifytxoutproof, true},
+    // Token
+    {"token", "createtokenscript", &createtokenscript, true},
+    {"token", "tokenissue", &tokenissue, true},
+    {"token", "createtokentx", &createtokentx, true},
+    {"token", "signtokentx", &signtokentx, true},
 };
 
 void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC)
