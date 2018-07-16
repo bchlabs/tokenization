@@ -2941,7 +2941,7 @@ static const CRPCCommand commands[] = {
     {"wallet",                "removeprunedfunds",        &removeprunedfunds,        true},
     // Token
     {"token",                 "listtokenunspent",         &listtokenunspent,         true},
-    {"token",                 "gettokenbalance",          &gettokenbalance,         true},
+    {"token",                 "gettokenbalance",          &gettokenbalance,          true},
 };
 /* clang-format on */
 

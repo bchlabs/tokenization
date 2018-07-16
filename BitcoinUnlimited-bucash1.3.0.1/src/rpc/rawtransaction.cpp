@@ -1002,54 +1002,17 @@ UniValue sendrawtransaction(const UniValue &params, bool fHelp)
 // Token
 UniValue tokenissue(const UniValue &params, bool fHelp)
 {
-    if (fHelp || params.size() != 4)
+    if (fHelp || params.size() != 1)
         throw runtime_error(
-            "tokenissue \"txid\" \"vout\" \"amount\" \"supply\" \n"
+            "tokenissue \"supply\" \n"
             "\nIssue a new token, token id is one of your UTXO's txid.\n"
             "The total amount of token must be less than 10**18.\n"
             "Returns hex-encoded raw transaction.\n"
 
             "\nArguments:\n"
-            "1. \"txid\":      (string, required) The UTXO txid\n"
-            "2. \"vout\":      (numeric, required) The UTXO vout\n"
-            "3. \"amount\":    (string, required) The UTXO amount\n"
-            "4. \"supply\":    (string, required) token supply\n"
+            "1. \"supply\":    (string, required) token supply\n"
             "\nResult:\n"
             "\"transaction\"   (string) hex string of the transaction\n");
-
-    LOCK(cs_main);
-    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VNUM)(UniValue::VSTR)(UniValue::VSTR), true);
-    for (size_t i = 0; i < params.size(); ++i) 
-    {
-        if (params[i].isNull())
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
-    }
-
-    std::string txid = params[0].get_str();
-    int vout = params[1].get_int();
-    std::string amount = params[2].get_str();
-    std::string supply = params[3].get_str();
-
-    if (txid.size() != 64)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, invalid txid");
-
-    if (vout < 0)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, vout must be positive");
-
-    CAmount nAmount = atoll(amount.c_str());
-    if (nAmount <= 0)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, amount must be positive");
-
-    // 0.0001 fee
-    CAmount outAmount = nAmount * COIN - 0.0001 * COIN;
-    if (outAmount <= 0)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, amount is not enough for fee");
-
-    CAmount nSupply = atoll(supply.c_str());
-    if (nSupply <= 0)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply must be positive");
-    if (nSupply > MAX_TOKEN_SUPPLY)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply is out of range, max supply is 10**18");
 
 #ifdef ENABLE_WALLET
 	LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
@@ -1057,13 +1020,72 @@ UniValue tokenissue(const UniValue &params, bool fHelp)
 	LOCK(cs_main);
 #endif
 
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
+    if (params[0].isNull())
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    // check supply is valid
+    std::string supply = params[0].get_str();
+    CAmount nSupply = atoll(supply.c_str());
+    if (nSupply <= 0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply must be positive");
+    if (nSupply > MAX_TOKEN_SUPPLY)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply is out of range, max supply is 10**18");
+
+    // calaulate enough utxo
+    CAmount defaultSupplyAmount = 0.01 * COIN;
+    CAmount defaultSupplyFee = 0.0001 * COIN;
+
+    std::vector<COutput> utxo;
+    CAmount utxoAmount = 0;
+
+    UniValue results(UniValue::VARR);
+    std::vector<COutput> vecOutputs;
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    BOOST_FOREACH (const COutput &out, vecOutputs)
+    {
+        const CScript &pk = out.tx->vout[out.i].scriptPubKey;
+        if (pk.IsPayToScriptHash())
+        {
+            std::vector<unsigned char> vec(pk.begin() + 2, pk.begin() + 22);
+            CScriptID hash = CScriptID(uint160(vec));
+            CScript redeemScript;
+            if (pwalletMain->GetCScript(hash, redeemScript))
+            {
+                if (redeemScript.IsPayToToken())
+                {
+                	std::cout << "IsPayToToken111" << std::endl;
+                    continue;
+                }
+            }
+        }
+        else if (pk.IsPayToToken()) 
+        {
+        	std::cout << "IsPayToToken222" << std::endl;
+            continue;
+        }
+
+        CAmount nValue = out.tx->vout[out.i].nValue;
+        utxoAmount += nValue;
+        if (utxoAmount > (defaultSupplyAmount + defaultSupplyFee))
+        {
+        	utxo.push_back(out);
+        	break;
+        }  
+    }
+
+    // check balance is enough
+    if (utxoAmount < (defaultSupplyAmount + defaultSupplyFee))
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "balance is not enough for token issue, at least 0.0101BCH");
+
     // create tx
     CMutableTransaction rawTx;
     uint32_t nSequence = std::numeric_limits<uint32_t>::max();
-    uint256 uTxid;
-    uTxid.SetHex(txid);
-    CTxIn in(COutPoint(uTxid, vout), CScript(), nSequence);
-    rawTx.vin.push_back(in);
+    for (COutput out: utxo)
+    {
+        CTxIn in(COutPoint(out.tx->GetHash(), out.i), CScript(), nSequence);
+        rawTx.vin.push_back(in);      
+    }
 
     CPubKey newKey;
     if (!pwalletMain->GetKeyFromPool(newKey))
@@ -1071,23 +1093,30 @@ UniValue tokenissue(const UniValue &params, bool fHelp)
     CKeyID keyID = newKey.GetID();
     CScript scriptPubKey = GetScriptForDestination(keyID);
 
-    CScript script = CScript() << OP_TOKEN << ToByteVector(txid) << CScriptNum(nSupply);
+    // TODO utxo[0].tx->GetHash().GetHex() 
+    // TODO put hex into script directly
+    std::string tokenid = utxo[0].tx->GetHash().ToString();
+    CScript script = CScript() << OP_TOKEN << ToByteVector(tokenid) << CScriptNum(nSupply);
     script << OP_DROP << OP_DROP;
     script += scriptPubKey;
 
     CScriptID innerID(script);
     std::string address = EncodeDestination(innerID);
     UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("tokenID", txid));
+    result.push_back(Pair("tokenID", tokenid));
     result.push_back(Pair("tokenAddress", address));
     result.push_back(Pair("tokenScript", HexStr(script.begin(), script.end())));
 
     pwalletMain->AddCScript(script);
     pwalletMain->SetAddressBook(innerID, "", "token");
 
-    CTxOut out(outAmount, script);
-    rawTx.vout.push_back(out);
+    CTxOut supplyOut(defaultSupplyAmount, script);
+    rawTx.vout.push_back(supplyOut);
 
+    CAmount chargeAmount = utxoAmount - defaultSupplyAmount - defaultSupplyFee;
+    CTxOut chargeOut(chargeAmount, scriptPubKey);
+    rawTx.vout.push_back(chargeOut);
+ 
     // sign tx
     // Fetch previous transactions (inputs):
     CCoinsView viewDummy;
