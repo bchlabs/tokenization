@@ -5,113 +5,82 @@
 添加rpc:
 ```
 tokenissue  
-createtokenscript  
+listtokenunspent
+gettokenbalance  
 createtokentx  
 signtokentx  
-gettokenbalance  
-listtokenunspent
 ```
 
 # tokenization example  
 按照以下几步就可以实现Token的分发  
-1. 创建Token脚本  
-脚本内容是:
+
+发行Token
+tokenissue: 利用UTXO的txid来作为token的唯一表示符, 限制token只能发行一次, 不能增发, 使用如下:
 ```
-OP_TOKEN <tokenname> <tokensupply> OP_DROP OP_DROP OP_DUP OP_HASH160 <pubkey> OP_EQUALVERIFY  
-OP_CHECKSIG
-```  
-比如我想发代号为gon的代币10000个
-```
-./bitcoin-cli createtokenscript gon 10000  
-{  
-"address": "pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps",  
-"token": "b303676f6e021027757576a914c8ad0da40b0ff475cd749a3aa455f5af3dc3f0f388ac"  
+./bitcoin-cli -regtest tokenissue 10000
+{
+  "tokenID": "1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9",
+  "tokenAddress": "bchreg:prc38tlqr6t5fk2nfcacp3w3hcljz4nj3sw247lksj",
+  "tokenScript": "b34031656136333461653436633031326665353037636637346265373934663966306132623130336433316563303363353332653239333535326566326436376339021027757576a9140f1c285cccff07134505cf4a7a14346df16ccd8e88ac",
+  "txid": "59fc480f06a0888d08bfaa63dc26c9c7b2bad51db7c479351eee3ef7a5ca5a7f"
 }
 ```
-2. 向Token脚本中打BCH
-```
-./bitcoin-cli sentoaddress pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 1
-```  
-交易上链后就实现了Token的发行, 在这个例子中地址 pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps 内有10000个gon, 同时  
-也有1个BCH 
- 
-3. 查看Token数量  
-gettokenbalance 和 listtokenunspent 是用来查看Token的rpc
-```
-./bitcoin-cli gettokenbalance  
-[  
-{  
- "token": "gon",  
- "tokenAmount": 10000  
-}  
-]  
+上述命令表示发行新的token, 数量为10000个, tokenid = 1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9
 
-./bitcoin-cli listtokenunspent  
-[  
-{  
- "txid": "d1ed9b0b375e39859266a31d6f89d12a1b8371f6a8a9159323bcfac57d54892d",  
- "vout": 0,  
- "address": "bchreg:pzvcadtl6epnjenp4n6gvzum8tjp7gu5ng0ehkh2ps",
- "scriptPubKey": "a914998eb57fd643396661acf4860b9b3ae41f23949a87",  
- "redeemScript": "b303676f6e021027757576a914c8ad0da40b0ff475cd749a3aa455f5af3dc3f0f388ac",  
- "satoshi": 100000000,  
- "amount": 1.00000000,  
- "confirmations": 1,  
- "spendable": true,  
- "token": "gon",  
- "tokenAmount": 10000  
-}  
-]
-```  
-4. 交易Token  
-假如我想往地址 qq493drnameufw7t2wc40tk57clut83gcg02aek8nm 上转移4000个gon,  
-qzrsn9dhyvpgcwvrc28vkaylqee47amnacp2mt6ayp 上转移6000个gon, 可以这么操作
+等待交易链之后可以用 listtokenunspent 或 gettokenbalance 查看账号中的token
 ```
-./bitcoin-cli createtokentx  
-'[{"txid":"d1ed9b0b375e39859266a31d6f89d12a1b8371f6a8a9159323bcfac57d54892d","vout":0}]'  
-'[{"address":"qq493drnameufw7t2wc40tk57clut83gcg02aek8nm","amount":"0.5","tokenamount":"4000","tokenname":"gon"},  
-{"address":"qzrsn9dhyvpgcwvrc28vkaylqee47amnacp2mt6ayp","amount":"0.49","tokenamount":"6000","tokenname":"gon"}  
-]'
+./bitcoin-cli -regtest listtokenunspent
+[
+  {
+    "txid": "59fc480f06a0888d08bfaa63dc26c9c7b2bad51db7c479351eee3ef7a5ca5a7f",
+    "vout": 0,
+    "address": "bchreg:qq83c2zuenlswy69qh8557s5x3klzmxd3cvnweu3ks",
+    "scriptPubKey": "b34031656136333461653436633031326665353037636637346265373934663966306132623130336433316563303363353332653239333535326566326436376339021027757576a9140f1c285cccff07134505cf4a7a14346df16ccd8e88ac",
+    "amount": 0.01000000,
+    "confirmations": 1,
+    "spendable": true,
+    "token": "1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9",
+    "tokenAmount": 10000
+  }
+]
+```
+./bitcoin-cli -regtest gettokenbalance
+[
+  {
+    "token": "1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9",
+    "tokenAmount": 10000
+  }
+]
+```
+
+交易Token
+假如我想往地址 qrgs9qzgcjr9kjujzvhagvqvr8d7pypkeyzks6hvp0 上转移4000个token,  
+qq5fnlc3jegdxnqt42ql6zlxykk7catx2uc5z7vw2n 上转移6000个token, 可以这么操作
+```
+./bitcoin-cli -regtest createtokentx '[{"txid":"59fc480f06a0888d08bfaa63dc26c9c7b2bad51db7c479351eee3ef7a5ca5a7f","vout":0}]' 
+'[{"address":"qrgs9qzgcjr9kjujzvhagvqvr8d7pypkeyzks6hvp0","amount":"0.005","tokenamount":"4000","tokenname":"1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9"}, 
+{"address":"qq5fnlc3jegdxnqt42ql6zlxykk7catx2uc5z7vw2n","amount":"0.0049","tokenamount":"6000","tokenname":"1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9"}]'
 ```   
 接着对createtokentx的交易进行签名  
 ```
 ./bitcoin-cli signtokentx <hex>
 ```  
-广播上链后可以调用listtokenunspent再次查看token  
-```  
-./bitcoin-cli listtokenunspent  
-[  
- {  
- "txid": "e563405c43f28cbde89269de89eed3c045792917a9ad6e0686eca91b0d1bafcc",  
- "vout": 0,  
- "address": "bchreg:qq493drnameufw7t2wc40tk57clut83gcg02aek8nm",  
- "scriptPubKey": "b303676f6e02a00f757576a9142a58b473eef3c4bbcb53b157aed4f63fc59e28c288ac",  
- "satoshi": 10000000,  
- "amount": 0.10000000,  
- "confirmations": 1,  
- "spendable": true,  
- "token": "gon",  
- "tokenAmount": 4000  
- }  
+广播上链后可以调用 listtokenunspent 再次查看token  
+```
+./bitcoin-cli -regtest listtokenunspent
+[
+  {
+    "txid": "447da54f27b872f0bcf955e4d716673a21b986ec8ad078fe596642f16998f361",
+    "vout": 0,
+    "address": "bchreg:qrgs9qzgcjr9kjujzvhagvqvr8d7pypkeyzks6hvp0",
+    "scriptPubKey": "b3403165613633346165343663303132666535303763663734626537393466396630613262313033643331656330336335333265323933353532656632643637633902a00f757576a914d1028048c4865b4b92132fd4300c19dbe09036c988ac",
+    "amount": 0.00500000,
+    "confirmations": 1,
+    "spendable": true,
+    "token": "1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9",
+    "tokenAmount": 4000
+  }
 ]
-```  
-例子中的第一个地址是我的地址, 所以可以看到4000gon在我的账上, 而6000gon在其它人的账上  
-重复第4步就可以像BCH交易一样转移Token 
-
-5. tokenissue
-新增RPC:tokenissue, 优化了发行token的流程, 利用UTXO的txid来作为token的唯一表示符
-限制token只能发行一次, 不能增发, 使用如下:
 ```
-./bitcoin-cli tokenissue 22222
-{
-  "tokenID": "7601c731fc928b6cf43548f6f70b829f4a372f0f6c85ffa45e5ed52c4cc3af1a",
-  "tokenAddress": "bchreg:pqt8fn4dr03sprrnw69tj2ggyw657v8z4g0w64xmmd",
-  "tokenScript": "b3403736303163373331666339323862366366343335343866366637306238323966346133373266306636633835666661343565356564353263346363336166316102ce56757576a914dea243dcc8b4edbe88039aae76ea12d51ffbc34488ac",
-  "txid": "bdacd6045768a02a05f463b493b71167ae2a75484e11801734c8ef75d97242bd"
-}
-```
-
-
-
- 
-  
+例子中的第一个地址是我的地址, 所以可以看到4000token在我的账上, 而6000token在其它人的账上  
+交易token就像交易BCH一样简单 
