@@ -7,8 +7,7 @@
 tokenissue  
 listtokenunspent
 gettokenbalance  
-createtokentx  
-signtokentx  
+sendtoken
 ```
 
 # tokenization example  
@@ -58,15 +57,11 @@ tokenissue: 利用UTXO的txid来作为token的唯一表示符, 限制token只能
 假如我想往地址 qrgs9qzgcjr9kjujzvhagvqvr8d7pypkeyzks6hvp0 上转移4000个token,  
 qq5fnlc3jegdxnqt42ql6zlxykk7catx2uc5z7vw2n 上转移6000个token, 可以这么操作
 ```
-./bitcoin-cli -regtest createtokentx '[{"txid":"59fc480f06a0888d08bfaa63dc26c9c7b2bad51db7c479351eee3ef7a5ca5a7f","vout":0}]' 
+./bitcoin-cli -regtest sendtoken '[{"txid":"59fc480f06a0888d08bfaa63dc26c9c7b2bad51db7c479351eee3ef7a5ca5a7f","vout":0}]' 
 '[{"address":"qrgs9qzgcjr9kjujzvhagvqvr8d7pypkeyzks6hvp0","amount":"0.005","tokenamount":"4000","tokenname":"1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9"}, 
 {"address":"qq5fnlc3jegdxnqt42ql6zlxykk7catx2uc5z7vw2n","amount":"0.0049","tokenamount":"6000","tokenname":"1ea634ae46c012fe507cf74be794f9f0a2b103d31ec03c532e293552ef2d67c9"}]'
-```   
-接着对createtokentx的交易进行签名  
-```
-./bitcoin-cli signtokentx <hex>
 ```  
-广播上链后可以调用 listtokenunspent 再次查看token  
+上链后可以调用 listtokenunspent 再次查看token  
 ```
 ./bitcoin-cli -regtest listtokenunspent
 [
