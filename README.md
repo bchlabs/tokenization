@@ -44,6 +44,7 @@ tokenissue: 利用UTXO的txid来作为token的唯一表示符, 限制token只能
   }
 ]
 ```
+```
 ./bitcoin-cli -regtest gettokenbalance
 [
   {
