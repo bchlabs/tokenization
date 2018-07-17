@@ -4,11 +4,12 @@
 扩展opcode: OP_TOKEN (OP_NOP4)  
 添加rpc:
 ```
+tokenissue  
 createtokenscript  
 createtokentx  
 signtokentx  
 gettokenbalance  
-listtokenunspent  
+listtokenunspent
 ```
 
 # tokenization example  
@@ -95,5 +96,22 @@ qzrsn9dhyvpgcwvrc28vkaylqee47amnacp2mt6ayp 上转移6000个gon, 可以这么操�
 ]
 ```  
 例子中的第一个地址是我的地址, 所以可以看到4000gon在我的账上, 而6000gon在其它人的账上  
-重复第4步就可以像BCH交易一样转移Token  
+重复第4步就可以像BCH交易一样转移Token 
+
+5. tokenissue
+新增RPC:tokenissue, 优化了发行token的流程, 利用UTXO的txid来作为token的唯一表示符
+限制token只能发行一次, 不能增发, 使用如下:
+```
+./bitcoin-cli tokenissue 22222
+{
+  "tokenID": "7601c731fc928b6cf43548f6f70b829f4a372f0f6c85ffa45e5ed52c4cc3af1a",
+  "tokenAddress": "bchreg:pqt8fn4dr03sprrnw69tj2ggyw657v8z4g0w64xmmd",
+  "tokenScript": "b3403736303163373331666339323862366366343335343866366637306238323966346133373266306636633835666661343565356564353263346363336166316102ce56757576a914dea243dcc8b4edbe88039aae76ea12d51ffbc34488ac",
+  "txid": "bdacd6045768a02a05f463b493b71167ae2a75484e11801734c8ef75d97242bd"
+}
+```
+
+
+
+ 
   
