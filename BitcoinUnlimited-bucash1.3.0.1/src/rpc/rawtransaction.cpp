@@ -37,8 +37,12 @@
 
 #include <univalue.h>
 
+// Token
+#include <amount.h>
+
 using namespace std;
 
+// Token
 typedef vector<unsigned char> valtype;
 std::map<std::string, CScript> scriptmap;
 
@@ -998,6 +1002,640 @@ UniValue sendrawtransaction(const UniValue &params, bool fHelp)
 
 
 // Token
+set<CTxDestination> GetAccountAddress(const std::string &account)
+{
+    set<CTxDestination> ret;
+    for (const std::pair<CTxDestination, CAddressBookData> &item : pwalletMain->mapAddressBook)
+    {
+        const CTxDestination &dest = item.first;
+        const std::string &strName = item.second.name;
+        if (strName == account)
+            ret.insert(dest);
+    }
+    return ret;
+}
+
+UniValue GetAccountInfo(const std::string &account)
+{
+	LOCK2(cs_main, pwalletMain->cs_wallet);
+	assert(pwalletMain != NULL);
+
+	UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("account", account));
+
+    set<CTxDestination> destinations = GetAccountAddress(account);
+    UniValue addresses(UniValue::VARR);
+    for (const auto &dest: destinations)
+    	addresses.push_back(EncodeDestination(dest));
+    result.push_back(Pair("addresses", addresses));
+
+    if (destinations.size() == 0)
+    	return result;
+
+	UniValue unspentBCH(UniValue::VARR);
+	UniValue unspentToken(UniValue::VARR);
+    CAmount nBCHAmount = 0;
+    CAmount nTokenBCHAmount = 0;
+    std::map<std::string, CAmount> mTokenAmount;
+
+    vector<COutput> vecOutputs;
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    BOOST_FOREACH (const COutput &out, vecOutputs)
+    {
+        CTxDestination address;
+        if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+            continue;
+
+        if (!destinations.count(address))
+            continue;
+
+        CAmount nValue = out.tx->vout[out.i].nValue;
+        const CScript &pk = out.tx->vout[out.i].scriptPubKey;
+
+        bool fToken = false;
+    	if (pk.IsPayToScriptHash())
+    	{
+    	    CTxDestination address;
+    	    if (ExtractDestination(pk, address))
+    	    {
+	    		const CScriptID &hash = boost::get<CScriptID>(address);
+	    		CScript redeemScript;
+	    		if (pwalletMain->GetCScript(hash, redeemScript))
+    			{
+	    		    if (redeemScript.IsPayToToken())
+					{
+						fToken = true;
+		    		    UniValue entry(UniValue::VOBJ);
+		    		    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+		    		    entry.push_back(Pair("vout", out.i));
+
+		    		    CTxDestination address;
+		    			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+				        {
+				            entry.push_back(Pair("address", EncodeDestination(address)));
+				            if (pwalletMain->mapAddressBook.count(address))
+				                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+				        }
+		    					
+		    		    entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+		                entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
+		    		    entry.push_back(Pair("amount", ValueFromAmount(nValue)));
+		    		    entry.push_back(Pair("spendable", out.fSpendable));
+		    					
+		    		    int namesize = redeemScript[1];
+		    		    int amountsize = redeemScript[2 + namesize];
+		    		    std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
+		    		    std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
+		    		    std::string tokenName(vecName.begin(), vecName.end());
+		    		    CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+		    					
+		    		    entry.push_back(Pair("token", tokenName));
+			    		// entry.push_back(Pair("tokenAmount", std::to_string(tokenAmount)));
+			    		entry.push_back(Pair("tokenAmount", tokenAmount));
+		    		    unspentToken.push_back(entry);
+    					mTokenAmount[tokenName] += tokenAmount;
+    					nTokenBCHAmount += nValue;
+		    		}
+	    	    }
+    	    }
+    	}
+    	else if (pk.IsPayToToken())
+    	{
+    		fToken = true;
+    	    UniValue entry(UniValue::VOBJ);
+    	    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+    	    entry.push_back(Pair("vout", out.i));
+
+    	    CTxDestination address;
+			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+	        {
+	            entry.push_back(Pair("address", EncodeDestination(address)));
+	            if (pwalletMain->mapAddressBook.count(address))
+	                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+	        }
+
+    		entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+    		entry.push_back(Pair("amount", ValueFromAmount(nValue)));
+    		entry.push_back(Pair("spendable", out.fSpendable));
+    			
+    		int namesize = pk[1];
+    		int amountsize = pk[2 + namesize];
+    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+    		std::string tokenName(vecName.begin(), vecName.end());
+    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+    			
+    		entry.push_back(Pair("token", tokenName));
+    		// entry.push_back(Pair("tokenAmount", std::to_string(tokenAmount)));
+    		entry.push_back(Pair("tokenAmount", tokenAmount));
+    		unspentToken.push_back(entry);
+    		mTokenAmount[tokenName] += tokenAmount;
+    		nTokenBCHAmount += nValue;
+    	}
+
+    	if (fToken)
+    		continue;
+
+        UniValue entry(UniValue::VOBJ);
+        entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+        entry.push_back(Pair("vout", out.i));
+        if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+        {
+            entry.push_back(Pair("address", EncodeDestination(address)));
+            if (pwalletMain->mapAddressBook.count(address))
+                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+        }
+        entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+        if (pk.IsPayToScriptHash())
+        {
+            CTxDestination address;
+            if (ExtractDestination(pk, address))
+            {
+                const CScriptID &hash = boost::get<CScriptID>(address);
+                CScript redeemScript;
+                if (pwalletMain->GetCScript(hash, redeemScript))
+                    entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
+            }
+        }
+        entry.push_back(Pair("amount", ValueFromAmount(nValue)));
+        entry.push_back(Pair("spendable", out.fSpendable));
+        unspentBCH.push_back(entry);
+        nBCHAmount += nValue;
+    }
+
+    result.push_back(Pair("BCH", ValueFromAmount(nBCHAmount)));
+    result.push_back(Pair("BCHInToken", ValueFromAmount(nTokenBCHAmount)));
+
+    UniValue tokenlist(UniValue::VARR);
+    for (auto &it: mTokenAmount)
+    {
+    	UniValue u(UniValue::VOBJ);
+        u.push_back(Pair("token", it.first));
+        // u.push_back(Pair("amount", std::to_string(it.second)));
+        u.push_back(Pair("amount", it.second));
+        tokenlist.push_back(u);
+    }
+    result.push_back(Pair("tokenList", tokenlist));
+    result.push_back(Pair("unspentBCH", unspentBCH));
+    result.push_back(Pair("unspentToken", unspentToken));
+    return result;
+}
+
+UniValue getaccountinfo(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error("getaccountinfo \"account\" \n");
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
+    if (params[0].isNull()) 
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    std::string account = params[0].get_str();
+    return GetAccountInfo(account);
+}
+
+bool SignTokenTx(CMutableTransaction &rawTx)
+{
+    // Fetch previous transactions (inputs):
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    {
+        READLOCK(mempool.cs);
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+
+        BOOST_FOREACH (const CTxIn &txin, rawTx.vin)
+        {
+            view.AccessCoin(txin.prevout); // Load entries from viewChain into view; can fail.
+        }
+
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    CBasicKeyStore tempKeystore;
+
+#ifdef ENABLE_WALLET
+    if (pwalletMain)
+        EnsureWalletIsUnlocked();
+#endif
+
+#ifdef ENABLE_WALLET
+    const CKeyStore &keystore = (!pwalletMain ? tempKeystore : *pwalletMain);
+#else
+    const CKeyStore &keystore = tempKeystore;
+#endif
+
+    int nHashType = SIGHASH_ALL;
+    bool pickedForkId = false;
+    if (!pickedForkId) // If the user didn't specify, use the configured default for the hash type
+    {
+        if (IsUAHFforkActiveOnNextBlock(chainActive.Tip()->nHeight))
+        {
+            nHashType |= SIGHASH_FORKID;
+            pickedForkId = true;
+        }
+    }
+
+    bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
+
+    // Script verification errors
+    UniValue vErrors(UniValue::VARR);
+
+    // Use CTransaction for the constant parts of the
+    // transaction to avoid rehashing.
+    const CTransaction txConst(rawTx);
+
+    // Sign what we can:
+    for (unsigned int i = 0; i < rawTx.vin.size(); i++)
+    {
+        CTxIn &txin = rawTx.vin[i];
+        const Coin &coin = view.AccessCoin(txin.prevout);
+        if (coin.IsSpent())
+        {
+            TxInErrorToJSON(txin, vErrors, "Input not found or already spent");
+            continue;
+        }
+        const CScript &prevPubKey = coin.out.scriptPubKey;
+        const CAmount &amount = coin.out.nValue;
+
+        // Only sign SIGHASH_SINGLE if there's a corresponding output:
+        if (!fHashSingle || (i < rawTx.vout.size()))
+            SignSignature(keystore, prevPubKey, rawTx, i, amount, nHashType);
+
+        // ... and merge in other signatures:
+        if (pickedForkId)
+        {
+            txin.scriptSig = CombineSignatures(prevPubKey,
+                TransactionSignatureChecker(&txConst, i, amount, SCRIPT_ENABLE_SIGHASH_FORKID), txin.scriptSig, rawTx.vin[i].scriptSig);
+            ScriptError serror = SCRIPT_ERR_OK;
+
+            if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_ENABLE_SIGHASH_FORKID,
+                    MutableTransactionSignatureChecker(&rawTx, i, amount, SCRIPT_ENABLE_SIGHASH_FORKID), &serror))
+            {
+                TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+            }
+        }
+        else
+        {
+            txin.scriptSig = CombineSignatures(prevPubKey, TransactionSignatureChecker(&txConst, i, amount, 0),
+                        txin.scriptSig, rawTx.vin[i].scriptSig);
+            ScriptError serror = SCRIPT_ERR_OK;
+
+            if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS,
+                        MutableTransactionSignatureChecker(&rawTx, i, amount, 0), &serror))
+            {
+                TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+            }
+        }
+    }
+
+    if (!vErrors.empty())
+        return false;
+    return true;
+}
+
+void SendTokenTx(const CMutableTransaction &rawTx)
+{
+	uint256 hashTx = rawTx.GetHash();
+    bool fOverrideFees = false;
+    TransactionClass txClass = TransactionClass::DEFAULT;
+
+    bool fHaveChain = false;
+    bool fHaveMempool = mempool.exists(hashTx);
+    if (!fHaveMempool && !fHaveChain)
+    {
+        // push to local node and sync with wallets
+        CValidationState state;
+        bool fMissingInputs;
+        if (!AcceptToMemoryPool(mempool, state, rawTx, false, &fMissingInputs, false, !fOverrideFees, txClass))
+        {
+            if (state.IsInvalid())
+            {
+                throw JSONRPCError(
+                        RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
+            }
+            else
+            {
+                if (fMissingInputs)
+                {
+                    throw JSONRPCError(RPC_TRANSACTION_ERROR, "Missing inputs");
+                }
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, state.GetRejectReason());
+            }
+        }
+#ifdef ENABLE_WALLET
+        else
+            SyncWithWallets(rawTx, NULL, -1);
+#endif
+    }
+
+    RelayTransaction(rawTx);
+}
+
+UniValue tokenmint(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "tokenmint \"account\" \"token\" \"supply\"\n"
+            "\nIssue a new token, token id is one of your UTXO's txid.\n"
+            "The total amount of token must be less than 10**18.\n"
+            "You need at least 0.1001BCH to issue token.\n"
+            "Returns hex-encoded raw transaction.\n"
+
+            "\nArguments:\n"
+            "1. \"account\":   (string, required) token issuer\n"
+            "2. \"token\":     (string, required) token name\n"
+            "3. \"supply\":    (string, required) token supply\n"
+
+            "\nResult:\n"
+		    "\"txid\"          (string) The transaction hash in hex\n");
+
+#ifdef ENABLE_WALLET
+    LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
+#else
+    LOCK(cs_main);
+#endif
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VSTR)(UniValue::VSTR), true);
+    for (unsigned int i = 0; i < params.size(); ++i)
+    	if (params[i].isNull()) 
+        	throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    std::string account = params[0].get_str();
+    std::string tokenname = params[1].get_str();
+
+    // check supply is valid
+    std::string supply = params[2].get_str();
+    CAmount nSupply = atoll(supply.c_str());
+    if (nSupply <= 0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply must be positive");
+    if (nSupply > MAX_TOKEN_SUPPLY)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, supply is out of range, max supply is 10**18");
+
+    // default fee
+    CAmount defaultSupplyAmount = 0.01 * COIN;
+    CAmount defaultSupplyFee = 0.0001 * COIN;
+    UniValue result(UniValue::VOBJ);
+
+    // get account info
+    UniValue accountInfo = GetAccountInfo(account);
+    UniValue addresses = accountInfo["addresses"].get_array();
+    if (addresses.size() == 0)
+    {
+    	// account is not exist, return error
+    	result.push_back(Pair("error", 1));
+    	return result;
+    }
+
+    // create tx vin
+    CMutableTransaction rawTx;
+    uint32_t nSequence = std::numeric_limits<uint32_t>::max();
+
+    UniValue utxoBCH = accountInfo["unspentBCH"].get_array();
+    CAmount nVinAmount = 0;
+    for (size_t i = 0; i < utxoBCH.size(); ++i)
+    {
+    	UniValue utxo = utxoBCH[i];
+    	CAmount tmp = AmountFromValue(utxo["amount"]);
+    	uint256 txid;
+		txid.SetHex(utxo["txid"].get_str());
+    	CTxIn in(COutPoint(txid, utxo["vout"].get_int()), CScript(), nSequence);
+        rawTx.vin.push_back(in); 
+
+        nVinAmount += tmp;
+        if (nVinAmount >= (defaultSupplyAmount + defaultSupplyFee))
+            break; 
+    }
+
+    // check BCH balance is enough
+    if (nVinAmount < (defaultSupplyAmount + defaultSupplyFee))
+    {
+    	// BCH balance is not enough, return error
+    	result.push_back(Pair("error", 1));
+    	return result;
+    }
+
+    // build token script
+    CTxDestination destination = DecodeDestination(addresses[0].get_str());
+	CScript scriptPubKey = GetScriptForDestination(destination);
+    CScript script = CScript() << OP_TOKEN << ToByteVector(tokenname) << CScriptNum(nSupply);
+    script << OP_DROP << OP_DROP;
+    script += scriptPubKey;
+
+    CScriptID innerID(script);
+    std::string address = EncodeDestination(innerID);
+    result.push_back(Pair("account", account));
+    result.push_back(Pair("token", tokenname));
+    result.push_back(Pair("address", address));
+    // result.push_back(Pair("script", HexStr(script.begin(), script.end())));
+
+    pwalletMain->AddCScript(script);
+    pwalletMain->SetAddressBook(innerID, "", account);
+
+    // token vout
+    CTxOut supplyOut(defaultSupplyAmount, script);
+    rawTx.vout.push_back(supplyOut);
+
+    // charge vout
+    CAmount chargeAmount = nVinAmount - defaultSupplyAmount - defaultSupplyFee;
+    if (chargeAmount) 
+    {
+	    CTxOut chargeOut(chargeAmount, scriptPubKey);
+	    rawTx.vout.push_back(chargeOut);
+	}
+
+    // sign tx
+    if (!SignTokenTx(rawTx))
+    {
+        result.push_back(Pair("error", 4));
+        return result;
+    }
+
+    // send tx
+    SendTokenTx(rawTx);
+   
+    result.push_back(Pair("txid", rawTx.GetHash().ToString()));
+    result.push_back(Pair("fee", "0.0001"));
+    result.push_back(Pair("hex", EncodeHexTx(rawTx)));
+    return result;
+}
+
+UniValue tokentransfer(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "tokentransfer \"token\" \"account\" [{\"address\":\"xxxx\", \"amount\":n},...] \n"
+            "\nCreate a transaction to transfer token.\n"
+            "Returns hex-encoded raw transaction.\n"
+
+            "\nArguments:\n"
+            "1. \"token\":        (string, required) token name\n"
+            "2. \"account\":      (string, required) sender account\n"
+            "3. \"receivers\":    (string, required) A json array of receivers\n"
+            "     [\n"
+            "       {\n"
+            "         \"address\":\"xxxx\",  (string, required) reveiver address\n"
+            "         \"amount\":n           (numeric, required) token amount\n"
+            "       }\n"
+            "       ,...\n"
+            "     ]\n"
+
+            "\nResult:\n"
+		    "\"txid\"             (string) The transaction hash in hex\n");
+
+#ifdef ENABLE_WALLET
+    LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
+#else
+    LOCK(cs_main);
+#endif
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VSTR)(UniValue::VARR), true);
+    for (unsigned int i = 0; i < params.size(); ++i)
+    	if (params[i].isNull()) 
+        	throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    std::string token = params[0].get_str();
+    std::string account = params[1].get_str();
+    UniValue receivers = params[2].get_array();
+    UniValue result(UniValue::VOBJ);
+
+    // get account info 
+    UniValue accountInfo = GetAccountInfo(account);
+    UniValue addresses = accountInfo["addresses"].get_array();
+    if (addresses.size() == 0)
+    {
+    	// account is not exist, return error
+    	result.push_back(Pair("error", 2));
+    	return result;
+    }
+
+    CAmount defaultTransferFee = 0.01 * COIN;
+    CAmount defaultSupplyFee = 0.0001 * COIN;
+    CAmount nVinToken = 0;
+    CAmount nVoutToken = 0;
+    CAmount nVinBCH = 0;
+    CAmount nVoutBCH = defaultSupplyFee + defaultTransferFee * receivers.size();
+
+    // calculate vout token amount  
+    for (unsigned int idx = 0; idx < receivers.size(); ++idx)
+    {
+    	const UniValue &obj = receivers[idx].get_obj();
+    	std::string address = obj["address"].get_str();
+        CTxDestination destination = DecodeDestination(address);
+        if (!IsValidDestination(destination))
+        {
+        	// address is invalid, return error
+        	result.push_back(Pair("error", 3));
+        	return result;
+        }
+    	CAmount n = atoll(obj["amount"].get_str().c_str());
+    	nVoutToken += n;
+	}
+
+	// create tx
+    CMutableTransaction rawTx;
+    uint32_t nSequence = std::numeric_limits<uint32_t>::max();
+
+   	// search enough token vin
+    UniValue utxoToken = accountInfo["unspentToken"].get_array();
+    for (size_t i = 0; i < utxoToken.size(); ++i)
+    {
+    	UniValue u = utxoToken[i];
+    	uint256 txid;
+		txid.SetHex(u["txid"].get_str());
+    	CTxIn in(COutPoint(txid, u["vout"].get_int()), CScript(), nSequence);
+        rawTx.vin.push_back(in); 
+
+        nVinToken += u["tokenAmount"].get_int64();
+        if (nVinToken >= nVoutToken)
+            break; 
+    }
+
+    if (nVinToken < nVoutToken)
+	{
+    	// token balance is not enough, return error
+    	result.push_back(Pair("error", 2));
+    	return result;
+    }
+
+    // if has token charge, raise BCH fee 
+    if (nVinToken > nVoutToken)
+    	nVoutBCH += defaultTransferFee;
+
+    nVinBCH = rawTx.vin.size() * defaultTransferFee;
+
+    // search BCH vin to pay fee
+    UniValue utxoBCH = accountInfo["unspentBCH"].get_array();
+    for (size_t i = 0; i < utxoBCH.size(); ++i)
+    {
+    	UniValue u = utxoBCH[i];
+    	uint256 txid;
+		txid.SetHex(u["txid"].get_str());
+    	CTxIn in(COutPoint(txid, u["vout"].get_int()), CScript(), nSequence);
+        rawTx.vin.push_back(in); 
+
+        nVinBCH += AmountFromValue(u["amount"]);
+        if (nVinBCH >= nVoutBCH)
+            break; 
+    }
+
+    if (nVinBCH < nVoutBCH)
+	{
+    	// BCH balance is not enough, return error
+    	result.push_back(Pair("error", 1));
+    	return result;
+    }
+
+    // create token vout
+    for (unsigned int idx = 0; idx < receivers.size(); idx++)
+    {
+        const UniValue &output = receivers[idx];
+        std::string address = output["address"].get_str();
+    	CAmount n = atoll(output["amount"].get_str().c_str());
+        CTxDestination destination = DecodeDestination(address);
+        CScript scriptPubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(n) << OP_DROP << OP_DROP;
+        scriptPubKey += GetScriptForDestination(destination);
+        CTxOut out(defaultTransferFee, scriptPubKey);
+        rawTx.vout.push_back(out);	
+    }
+
+    CTxDestination chargeDest = DecodeDestination(addresses[0].get_str());
+
+    // token charge
+    if (nVinToken > nVoutToken)
+    {
+        CScript chargePubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(nVinToken - nVoutToken) << OP_DROP << OP_DROP;
+        chargePubKey += GetScriptForDestination(chargeDest);
+        CTxOut out(defaultTransferFee, chargePubKey);
+        rawTx.vout.push_back(out);	  	
+    }
+
+    // BCH charge
+    if (nVinBCH > nVoutBCH)
+	{
+        CScript chargePubKey = GetScriptForDestination(chargeDest);
+        CTxOut out(nVinBCH - nVoutBCH, chargePubKey);
+        rawTx.vout.push_back(out);	
+	}
+
+    // sign tx
+    if (!SignTokenTx(rawTx))
+    {
+        result.push_back(Pair("error", 4));
+        return result;
+    }
+
+    // send tx
+    SendTokenTx(rawTx);
+   
+    result.push_back(Pair("txid", rawTx.GetHash().ToString()));
+    result.push_back(Pair("fee", "0.0001"));
+    result.push_back(Pair("hex", EncodeHexTx(rawTx)));
+    return result;
+}
+
+
 UniValue tokenissue(const UniValue &params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -1005,6 +1643,7 @@ UniValue tokenissue(const UniValue &params, bool fHelp)
             "tokenissue \"supply\" \n"
             "\nIssue a new token, token id is one of your UTXO's txid.\n"
             "The total amount of token must be less than 10**18.\n"
+            "You need at least 0.0101BCH to issue token.\n"
             "Returns hex-encoded raw transaction.\n"
 
             "\nArguments:\n"
@@ -1682,6 +2321,9 @@ static const CRPCCommand commands[] = {
     {"token", "createtokenscript", &createtokenscript, true},
     {"token", "tokenissue", &tokenissue, true},
     {"token", "sendtoken", &sendtoken, true},
+    {"token", "getaccountinfo", &getaccountinfo, true},
+    {"token", "tokenmint", &tokenmint, true},
+    {"token", "tokentransfer", &tokentransfer, true},
 };
 
 void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC)

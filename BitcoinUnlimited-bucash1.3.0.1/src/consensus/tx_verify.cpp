@@ -328,22 +328,23 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
     }
 
     // check token issue
-    if (mVinToken.empty() && !mVoutToken.empty()) 
-    {
-        if (vTokenid.size() != 1)
-            return state.DoS(100, false, REJECT_INVALID, "issue only one token in a signle transaction");
+    // TODO ignore this verify steps for supporting Token Wallet
+    // if (mVinToken.empty() && !mVoutToken.empty()) 
+    // {
+    //     if (vTokenid.size() != 1)
+    //         return state.DoS(100, false, REJECT_INVALID, "issue only one token in a signle transaction");
 
-        bool issue = false;
-        for (std::string txid: vTxid)
-        {
-            if (txid == vTokenid[0]) {
-                issue = true;
-                break;
-            }
-        }
-        if (!issue)
-            return state.DoS(100, false, REJECT_INVALID, "tokenid must be one of the issuer's UTXO txid");
-    }
+    //     bool issue = false;
+    //     for (std::string txid: vTxid)
+    //     {
+    //         if (txid == vTokenid[0]) {
+    //             issue = true;
+    //             break;
+    //         }
+    //     }
+    //     if (!issue)
+    //         return state.DoS(100, false, REJECT_INVALID, "tokenid must be one of the issuer's UTXO txid");
+    // }
     // verify token end
 			
     if (nValueIn < tx.GetValueOut())

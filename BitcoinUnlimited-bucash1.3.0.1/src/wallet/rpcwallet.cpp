@@ -693,6 +693,7 @@ CAmount GetAccountBalance(CWalletDB &walletdb, const string &strAccount, int nMi
         if (nReceived != 0 && wtx.GetDepthInMainChain() >= nMinDepth)
             nBalance += nReceived;
         nBalance -= nSent + nFee;
+            std::cout << "balance: " << nBalance << std::endl;
     }
 
     // Tally internal accounting entries
@@ -767,7 +768,7 @@ UniValue getbalance(const UniValue &params, bool fHelp)
             list<COutputEntry> listReceived;
             list<COutputEntry> listSent;
             wtx.GetAmounts(listReceived, listSent, allFee, strSentAccount, filter);
-            if (wtx.GetDepthInMainChain() >= nMinDepth)
+	    if (wtx.GetDepthInMainChain() >= nMinDepth)
             {
                 BOOST_FOREACH (const COutputEntry &r, listReceived)
                     nBalance += r.amount;
