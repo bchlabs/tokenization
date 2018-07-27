@@ -1052,56 +1052,8 @@ UniValue GetAccountInfo(const std::string &account)
         CAmount nValue = out.tx->vout[out.i].nValue;
         const CScript &pk = out.tx->vout[out.i].scriptPubKey;
 
-        bool fToken = false;
-    	if (pk.IsPayToScriptHash())
+    	if (pk.IsPayToToken())
     	{
-    	    CTxDestination address;
-    	    if (ExtractDestination(pk, address))
-    	    {
-	    		const CScriptID &hash = boost::get<CScriptID>(address);
-	    		CScript redeemScript;
-	    		if (pwalletMain->GetCScript(hash, redeemScript))
-    			{
-	    		    if (redeemScript.IsPayToToken())
-					{
-						fToken = true;
-		    		    UniValue entry(UniValue::VOBJ);
-		    		    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
-		    		    entry.push_back(Pair("vout", out.i));
-
-		    		    CTxDestination address;
-		    			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
-				        {
-				            entry.push_back(Pair("address", EncodeDestination(address)));
-				            if (pwalletMain->mapAddressBook.count(address))
-				                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
-				        }
-		    					
-		    		    entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
-		                entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
-		    		    entry.push_back(Pair("amount", ValueFromAmount(nValue)));
-		    		    entry.push_back(Pair("spendable", out.fSpendable));
-		    					
-		    		    int namesize = redeemScript[1];
-		    		    int amountsize = redeemScript[2 + namesize];
-		    		    std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-		    		    std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-		    		    std::string tokenName(vecName.begin(), vecName.end());
-		    		    CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-		    					
-		    		    entry.push_back(Pair("token", tokenName));
-			    		// entry.push_back(Pair("tokenAmount", std::to_string(tokenAmount)));
-			    		entry.push_back(Pair("tokenAmount", tokenAmount));
-		    		    unspentToken.push_back(entry);
-    					mTokenAmount[tokenName] += tokenAmount;
-    					nTokenBCHAmount += nValue;
-		    		}
-	    	    }
-    	    }
-    	}
-    	else if (pk.IsPayToToken())
-    	{
-    		fToken = true;
     	    UniValue entry(UniValue::VOBJ);
     	    entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
     	    entry.push_back(Pair("vout", out.i));
@@ -1126,15 +1078,12 @@ UniValue GetAccountInfo(const std::string &account)
     		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
     			
     		entry.push_back(Pair("token", tokenName));
-    		// entry.push_back(Pair("tokenAmount", std::to_string(tokenAmount)));
     		entry.push_back(Pair("tokenAmount", tokenAmount));
     		unspentToken.push_back(entry);
     		mTokenAmount[tokenName] += tokenAmount;
     		nTokenBCHAmount += nValue;
-    	}
-
-    	if (fToken)
     		continue;
+    	}
 
         UniValue entry(UniValue::VOBJ);
         entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
@@ -1171,7 +1120,6 @@ UniValue GetAccountInfo(const std::string &account)
     {
     	UniValue u(UniValue::VOBJ);
         u.push_back(Pair("token", it.first));
-        // u.push_back(Pair("amount", std::to_string(it.second)));
         u.push_back(Pair("amount", it.second));
         tokenlist.push_back(u);
     }
@@ -1633,6 +1581,256 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
     result.push_back(Pair("fee", "0.0001"));
     result.push_back(Pair("hex", EncodeHexTx(rawTx)));
     return result;
+}
+
+UniValue tokenlist(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            "tokenlist \n"
+            "\nList the information about all the issued token.\n"
+            "Returns token information.\n");
+
+	UniValue result(UniValue::VARR);
+	std::set<std::string> sToken;
+    int height = chainActive.Height();
+    CBlockIndex *pblockindex = NULL;
+
+    for (int i = 100; i <= height; ++i)
+    {
+        pblockindex = chainActive[i];
+        CBlock block;
+        if (ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
+        {
+            for (const auto &tx: block.vtx)
+            {
+                if (tx->IsCoinBase())
+                	continue;
+
+                for (const auto &out: tx->vout)
+                {
+                	const CScript &pk = out.scriptPubKey;
+			    	if (pk.IsPayToToken())
+			    	{
+			    		int namesize = pk[1];
+			    		int amountsize = pk[2 + namesize];
+			    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+			    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+			    		std::string tokenName(vecName.begin(), vecName.end());
+			    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+			    		if (sToken.count(tokenName))
+			    			continue;
+			    		else 
+			    			sToken.insert(tokenName);
+			    		
+			    	    UniValue entry(UniValue::VOBJ);
+			    	    entry.push_back(Pair("txid", tx->GetHash().GetHex()));
+			    	    CTxDestination address;
+						if (ExtractDestination(pk, address))
+				        {
+				            entry.push_back(Pair("address", EncodeDestination(address)));
+				            if (pwalletMain->mapAddressBook.count(address))
+				                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+				        }
+			    		entry.push_back(Pair("token", tokenName));
+					    entry.push_back(Pair("supply", tokenAmount));
+					    result.push_back(entry);
+			    	}
+                }
+
+            }
+        }
+    }
+
+    return result;
+}
+
+UniValue tokensearch(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 2)
+        throw runtime_error(
+            "tokensearch \"account\" \"token\" \n"
+            "\nSearch token by account or token name.\n"
+            "Returns token information.\n");
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VSTR)(UniValue::VSTR), true);
+    std::string account = params[0].get_str();
+    std::string token = params[1].get_str();
+    if (account.empty() && token.empty()) 
+    	throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments only one can be null");
+
+	UniValue result(UniValue::VARR);
+	std::set<std::string> sToken;
+    int height = chainActive.Height();
+    CBlockIndex *pblockindex = NULL;
+
+    for (int i = 100; i <= height; ++i)
+    {
+        pblockindex = chainActive[i];
+        CBlock block;
+        if (ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
+        {
+            for (const auto &tx: block.vtx)
+            {
+                if (tx->IsCoinBase())
+                	continue;
+
+                for (const auto &out: tx->vout)
+                {
+                	const CScript &pk = out.scriptPubKey;
+			    	if (pk.IsPayToToken())
+			    	{
+			    		int namesize = pk[1];
+			    		int amountsize = pk[2 + namesize];
+			    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+			    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+			    		std::string tokenName(vecName.begin(), vecName.end());
+			    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+	    				CTxDestination address;
+	    				std::string issuer = "";
+						if (ExtractDestination(pk, address))
+				        {     
+				            if (pwalletMain->mapAddressBook.count(address))
+				            	issuer = pwalletMain->mapAddressBook[address].name;
+				        }	    		
+
+			    		if (!token.empty())
+			    		{
+			    			if (token == tokenName && (account.empty() || account == issuer))
+			    			{
+					    	    UniValue entry(UniValue::VOBJ);
+					    	    entry.push_back(Pair("txid", tx->GetHash().GetHex()));
+					    		entry.push_back(Pair("token", tokenName));
+							    entry.push_back(Pair("supply", tokenAmount));
+							    entry.push_back(Pair("address", EncodeDestination(address)));	
+				        		entry.push_back(Pair("account", issuer));
+							    result.push_back(entry);
+							    return result;
+			    			}
+			    		}
+			    		else if (!account.empty() && account == issuer)
+			    		{
+		    				UniValue entry(UniValue::VOBJ);
+				    	    entry.push_back(Pair("txid", tx->GetHash().GetHex()));
+				    		entry.push_back(Pair("token", tokenName));
+						    entry.push_back(Pair("supply", tokenAmount));
+						    entry.push_back(Pair("address", EncodeDestination(address)));	
+			        		entry.push_back(Pair("account", issuer));
+						    result.push_back(entry);
+						    return result;
+			    		}
+			    	}
+                }
+
+            }
+        }
+    }
+
+    return result;
+}
+
+
+UniValue GetAccountTokenAddress(const std::string &account)
+{
+	LOCK2(cs_main, pwalletMain->cs_wallet);
+	assert(pwalletMain != NULL);
+
+	UniValue result(UniValue::VARR);
+
+    set<CTxDestination> destinations = GetAccountAddress(account);
+    if (destinations.size() == 0)
+    	return result;
+
+    vector<COutput> vecOutputs;
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    BOOST_FOREACH (const COutput &out, vecOutputs)
+    {
+        CTxDestination address;
+        if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+            continue;
+
+        if (!destinations.count(address))
+            continue;
+
+        const CScript &pk = out.tx->vout[out.i].scriptPubKey;
+    	if (pk.IsPayToToken())
+    	{
+    	    UniValue entry(UniValue::VOBJ);
+    	    CTxDestination address;
+			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+	        {
+	            entry.push_back(Pair("address", EncodeDestination(address)));
+	        }
+    		int namesize = pk[1];
+    		int amountsize = pk[2 + namesize];
+    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+    		std::string tokenName(vecName.begin(), vecName.end());
+    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+    			
+    		entry.push_back(Pair("token", tokenName));
+    		entry.push_back(Pair("tokenAmount", tokenAmount));
+    		result.push_back(entry);
+    	}
+    }
+
+    return result;
+}
+
+UniValue tokenaddress(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "tokenaddress \"account\" \n"
+            "\nList the addresses that contains token.\n"
+            "Returns address list.\n");
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
+    if (params[0].isNull()) 
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, argument must be non-null");
+
+    std::string account = params[0].get_str();
+    return GetAccountTokenAddress(account);
+}
+
+UniValue tokenhistory(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 4)
+        throw runtime_error(
+            "tokenhistory \"account\" \"token\" \"index\" \"limit\" \n"
+            "\nList the token tx history.\n"
+            "Returns token tx list.\n");
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VSTR)(UniValue::VNUM)(UniValue::VNUM), true);
+    for (size_t i = 0; i < params.size(); ++i)
+    	if (params[i].isNull()) 
+        	throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    std::string account = params[0].get_str();
+    std::string token = params[1].get_str();
+    int index = params[2].get_int();
+    int limit = params[3].get_int();
+
+
+    return GetAccountTokenAddress(account);
+}
+
+UniValue tokendetail(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "tokendetail \"txid\" \n"
+            "\nReturns the transaction details\n");
+
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
+	if (params[0].isNull()) 
+    	throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments must be non-null");
+
+    std::string txid = params[0].get_str();
+
+    return "";
 }
 
 
@@ -2324,6 +2522,11 @@ static const CRPCCommand commands[] = {
     {"token", "getaccountinfo", &getaccountinfo, true},
     {"token", "tokenmint", &tokenmint, true},
     {"token", "tokentransfer", &tokentransfer, true},
+    {"token", "tokenlist", &tokenlist, true},
+    {"token", "tokensearch", &tokensearch, true},
+    {"token", "tokenaddress", &tokenaddress, true},
+    {"token", "tokenhistory", &tokenhistory, true},
+    {"token", "tokendetail", &tokendetail, true},
 };
 
 void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC)
