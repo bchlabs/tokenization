@@ -2,6 +2,7 @@
 基于BCH实现发Token的功能  
 实现的思路是把Token的内容放在BCH脚本中, 依附在交易上, 通过BCH的UTXO交易来转移Token  
 扩展opcode: OP_TOKEN (OP_NOP4)  
+
 添加rpc:
 ```
 tokenissue  
@@ -9,6 +10,19 @@ listtokenunspent
 gettokenbalance  
 sendtoken
 ```
+
+7.27 更新
+针对Token钱包客户端增加以下RPC
+```
+tokenmint
+tokentransfer
+tokenlist
+tokensearch
+tokenaddress
+tokenhistory
+tokendetail
+```
+具体内容参考[Token_Wallet_API.pdf](./Token_Wallet_API.pdf)
 
 # tokenization example  
 按照以下几步就可以实现Token的分发  
