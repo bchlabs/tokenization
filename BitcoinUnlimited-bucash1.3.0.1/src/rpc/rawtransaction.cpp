@@ -1413,7 +1413,7 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
 {
     if (fHelp || params.size() != 3)
         throw runtime_error(
-            "tokentransfer \"token\" \"account\" [{\"address\":\"xxxx\", \"amount\":n},...] \n"
+            "tokentransfer \"token\" \"account\" [{\"address\":\"xxxx\", \"amount\":\"1111\"},...] \n"
             "\nCreate a transaction to transfer token.\n"
             "Returns hex-encoded raw transaction.\n"
 
@@ -1478,6 +1478,12 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
         	return result;
         }
     	CAmount n = atoll(obj["amount"].get_str().c_str());
+    	if (n < 1)
+        {
+        	// amount < 1, return error
+        	result.push_back(Pair("error", 3));
+        	return result;
+        }    		
     	nVoutToken += n;
 	}
 
