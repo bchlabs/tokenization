@@ -1142,7 +1142,7 @@ UniValue getaccountinfo(const UniValue &params, bool fHelp)
     return GetAccountInfo(account);
 }
 
-bool SignTokenTx(CMutableTransaction &rawTx)
+bool SignTokenTx(CMutableTransaction &rawTx, UniValue &vErrors)
 {
     // Fetch previous transactions (inputs):
     CCoinsView viewDummy;
@@ -1188,7 +1188,7 @@ bool SignTokenTx(CMutableTransaction &rawTx)
     bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
 
     // Script verification errors
-    UniValue vErrors(UniValue::VARR);
+    // UniValue vErrors(UniValue::VARR);
 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
@@ -1393,10 +1393,11 @@ UniValue tokenmint(const UniValue &params, bool fHelp)
 	    rawTx.vout.push_back(chargeOut);
 	}
 
+    UniValue vErrors(UniValue::VARR);
     // sign tx
-    if (!SignTokenTx(rawTx))
+    if (!SignTokenTx(rawTx, vErrors))
     {
-        result.push_back(Pair("error", 4));
+        result.push_back(Pair("error", vErrors));
         return result;
     }
 
@@ -1573,10 +1574,11 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
         rawTx.vout.push_back(out);	
 	}
 
+    UniValue vErrors(UniValue::VARR);
     // sign tx
-    if (!SignTokenTx(rawTx))
+    if (!SignTokenTx(rawTx, vErrors))
     {
-        result.push_back(Pair("error", 4));
+        result.push_back(Pair("error", vErrors));
         return result;
     }
 
