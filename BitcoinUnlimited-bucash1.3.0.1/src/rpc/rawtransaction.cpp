@@ -1708,7 +1708,7 @@ UniValue tokensearch(const UniValue &params, bool fHelp)
     return result;
 }
 
-UniValue GetAccountTokenAddress(const std::string &account)
+UniValue GetTokenAddress(const std::string &account, const std::string &token)
 {
 	LOCK2(cs_main, pwalletMain->cs_wallet);
 	assert(pwalletMain != NULL);
@@ -1733,19 +1733,22 @@ UniValue GetAccountTokenAddress(const std::string &account)
         const CScript &pk = out.tx->vout[out.i].scriptPubKey;
     	if (pk.IsPayToToken())
     	{
-    	    UniValue entry(UniValue::VOBJ);
-    	    CTxDestination address;
-			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
-	        {
-	            entry.push_back(Pair("address", EncodeDestination(address)));
-	        }
     		int namesize = pk[1];
     		int amountsize = pk[2 + namesize];
     		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
     		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
     		std::string tokenName(vecName.begin(), vecName.end());
     		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-    			
+    	
+    		if (tokenName != token)
+    			continue;
+
+    	    UniValue entry(UniValue::VOBJ);
+    	    CTxDestination address;
+			if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+	        {
+	            entry.push_back(Pair("address", EncodeDestination(address)));
+	        }		
     		entry.push_back(Pair("token", tokenName));
     		entry.push_back(Pair("amount", tokenAmount));
     		result.push_back(entry);
@@ -1756,18 +1759,19 @@ UniValue GetAccountTokenAddress(const std::string &account)
 
 UniValue tokenaddress(const UniValue &params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() != 2)
         throw runtime_error(
-            "tokenaddress \"account\" \n"
+            "tokenaddress \"account\" \"token\"\n"
             "\nList the addresses that contains token.\n"
             "Returns address list.\n");
 
-    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR), true);
-    if (params[0].isNull()) 
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, argument must be non-null");
+    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VSTR), true);
+    if (params[0].isNull() || params[1].isNull()) 
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters, arguments must be non-null");
 
     std::string account = params[0].get_str();
-    return GetAccountTokenAddress(account);
+    std::string token = params[1].get_str();
+    return GetTokenAddress(account, token);
 }
 
 void ListTokenTransactions(const CWalletTx &wtx,
