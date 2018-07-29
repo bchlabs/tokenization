@@ -1073,10 +1073,21 @@ UniValue GetAccountInfo(const std::string &account)
     		int namesize = pk[1];
     		int amountsize = pk[2 + namesize];
     		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
     		std::string tokenName(vecName.begin(), vecName.end());
-    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-    			
+    		
+            // check opcode or scriptnum
+            CAmount tokenAmount = 0;
+            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                tokenAmount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+                tokenAmount = CScriptNum(vec, true).getint64();
+            }
+
     		entry.push_back(Pair("token", tokenName));
     		entry.push_back(Pair("tokenAmount", tokenAmount));
     		unspentToken.push_back(entry);
@@ -1281,6 +1292,65 @@ void SendTokenTx(const CMutableTransaction &rawTx)
     RelayTransaction(rawTx);
 }
 
+opcodetype GetOpcode(const CAmount n)
+{
+	opcodetype ret = OP_1;
+	switch (n)
+	{
+		case 1:
+			ret = OP_1;
+			break;
+		case 2:
+			ret = OP_2;
+			break;
+		case 3:
+			ret = OP_3;
+			break;
+		case 4:
+			ret = OP_4;
+			break;
+		case 5:
+			ret = OP_5;
+			break;
+		case 6:
+			ret = OP_6;	
+			break;
+		case 7:
+			ret = OP_7;
+			break;
+		case 8:
+			ret = OP_8;
+			break;
+		case 9:
+			ret = OP_9;
+			break;
+		case 10:
+			ret = OP_10;
+			break;
+		case 11:
+			ret = OP_11;
+			break;
+		case 12:
+			ret = OP_12;
+			break;
+		case 13:
+			ret = OP_13;
+			break;
+		case 14:
+			ret = OP_14;
+			break;	
+		case 15:
+			ret = OP_15;
+			break;
+		case 16:
+			ret = OP_16;
+			break;
+	    default:
+	    	break;
+	}
+	return ret;
+} 
+
 UniValue tokenmint(const UniValue &params, bool fHelp)
 {
     if (fHelp || params.size() != 3)
@@ -1367,7 +1437,14 @@ UniValue tokenmint(const UniValue &params, bool fHelp)
     // build token script
     CTxDestination destination = DecodeDestination(addresses[0].get_str());
 	CScript scriptPubKey = GetScriptForDestination(destination);
-    CScript script = CScript() << OP_TOKEN << ToByteVector(tokenname) << CScriptNum(nSupply);
+
+	CScript script;
+    if (nSupply < 17) 
+    	script = CScript() << OP_TOKEN << ToByteVector(tokenname) << GetOpcode(nSupply);
+    else 
+    	script = CScript() << OP_TOKEN << ToByteVector(tokenname) << CScriptNum(nSupply);
+
+    // CScript script = CScript() << OP_TOKEN << ToByteVector(tokenname) << CScriptNum(nSupply);
     script << OP_DROP << OP_DROP;
     script += scriptPubKey;
 
@@ -1409,6 +1486,7 @@ UniValue tokenmint(const UniValue &params, bool fHelp)
     // result.push_back(Pair("hex", EncodeHexTx(rawTx)));
     return result;
 }
+
 
 UniValue tokentransfer(const UniValue &params, bool fHelp)
 {
@@ -1549,7 +1627,14 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
         std::string address = output["address"].get_str();
     	CAmount n = atoll(output["amount"].get_str().c_str());
         CTxDestination destination = DecodeDestination(address);
-        CScript scriptPubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(n) << OP_DROP << OP_DROP;
+
+		CScript scriptPubKey;
+        if (n < 17) 
+        	scriptPubKey = CScript() << OP_TOKEN << ToByteVector(token) << GetOpcode(n) << OP_DROP << OP_DROP;
+        else 
+        	scriptPubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(n) << OP_DROP << OP_DROP;
+        
+        // CScript scriptPubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(n) << OP_DROP << OP_DROP;
         scriptPubKey += GetScriptForDestination(destination);
         CTxOut out(defaultTransferFee, scriptPubKey);
         rawTx.vout.push_back(out);	
@@ -1560,7 +1645,14 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
     // token charge
     if (nVinToken > nVoutToken)
     {
-        CScript chargePubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(nVinToken - nVoutToken) << OP_DROP << OP_DROP;
+    	CAmount n = nVinToken - nVoutToken;
+        CScript chargePubKey;
+        if (n < 17) 
+        	chargePubKey = CScript() << OP_TOKEN << ToByteVector(token) << GetOpcode(n) << OP_DROP << OP_DROP;
+        else 
+        	chargePubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(n) << OP_DROP << OP_DROP;
+
+        // CScript chargePubKey = CScript() << OP_TOKEN << ToByteVector(token) << CScriptNum(nVinToken - nVoutToken) << OP_DROP << OP_DROP;
         chargePubKey += GetScriptForDestination(chargeDest);
         CTxOut out(defaultTransferFee, chargePubKey);
         rawTx.vout.push_back(out);	  	
@@ -1579,6 +1671,7 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
     if (!SignTokenTx(rawTx, vErrors))
     {
         result.push_back(Pair("error", vErrors));
+        result.push_back(Pair("hex", EncodeHexTx(rawTx)));
         return result;
     }
 
@@ -1616,9 +1709,22 @@ UniValue tokenlist(const UniValue &params, bool fHelp)
 	    		int namesize = pk[1];
 	    		int amountsize = pk[2 + namesize];
 	    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-	    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
 	    		std::string tokenName(vecName.begin(), vecName.end());
-	    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+	    		// CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+	    		// check opcode or scriptnum
+	            CAmount tokenAmount = 0;
+	            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+	            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+	            {
+	                tokenAmount = opcode.at(0) - 0x50;
+	            }
+	            else
+	            {
+	                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	                tokenAmount = CScriptNum(vec, true).getint64();
+	            }
 
 	    		if (sToken.count(tokenName))
 	    			continue;
@@ -1673,9 +1779,22 @@ UniValue tokensearch(const UniValue &params, bool fHelp)
 	    		int namesize = pk[1];
 	    		int amountsize = pk[2 + namesize];
 	    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-	    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
 	    		std::string tokenName(vecName.begin(), vecName.end());
-	    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+	    		// CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+	    	    // check opcode or scriptnum
+	            CAmount tokenAmount = 0;
+	            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+	            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+	            {
+	                tokenAmount = opcode.at(0) - 0x50;
+	            }
+	            else
+	            {
+	                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	                tokenAmount = CScriptNum(vec, true).getint64();
+	            }
 
 				CTxDestination address;
 				std::string issuer = "";
@@ -1744,9 +1863,22 @@ UniValue GetTokenAddress(const std::string &account, const std::string &token)
     		int namesize = pk[1];
     		int amountsize = pk[2 + namesize];
     		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
     		std::string tokenName(vecName.begin(), vecName.end());
-    		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+    		// CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+    	    // check opcode or scriptnum
+            CAmount tokenAmount = 0;
+            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                tokenAmount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+                tokenAmount = CScriptNum(vec, true).getint64();
+            }   		
     	
     		if (tokenName != token)
     			continue;
@@ -1885,9 +2017,22 @@ UniValue tokenhistory(const UniValue &params, bool fHelp)
 	    		int namesize = pk[1];
 	    		int amountsize = pk[2 + namesize];
 	    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-	    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
 	    		std::string tokenName(vecName.begin(), vecName.end());
-	    		CAmount amount = CScriptNum(vecAmount, true).getint64();
+	    		// CAmount amount = CScriptNum(vecAmount, true).getint64();
+
+	    		// check opcode or scriptnum
+	            CAmount tokenAmount = 0;
+	            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+	            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+	            {
+	                tokenAmount = opcode.at(0) - 0x50;
+	            }
+	            else
+	            {
+	                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	                tokenAmount = CScriptNum(vec, true).getint64();
+	            }   		
 
 	    		if (tokenName != token)
 	    			continue;
@@ -1906,7 +2051,7 @@ UniValue tokenhistory(const UniValue &params, bool fHelp)
 				UniValue entry(UniValue::VOBJ);
 				entry.push_back(Pair("txid", it.first.ToString()));
 		        entry.push_back(Pair("address", EncodeDestination(address)));
-		        entry.push_back(Pair("amount", amount));
+		        entry.push_back(Pair("amount", tokenAmount));
 		        entry.push_back(Pair("category", "receive"));
 		        entry.push_back(Pair("timestamp", wtx.GetTxTime()));
 		        result.push_back(entry);
@@ -1930,9 +2075,22 @@ UniValue tokenhistory(const UniValue &params, bool fHelp)
 	    		int namesize = pk[1];
 	    		int amountsize = pk[2 + namesize];
 	    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-	    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
 	    		std::string tokenName(vecName.begin(), vecName.end());
-	    		CAmount amount = CScriptNum(vecAmount, true).getint64();
+	    		// CAmount amount = CScriptNum(vecAmount, true).getint64();
+
+	    		// check opcode or scriptnum
+	            CAmount tokenAmount = 0;
+	            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+	            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+	            {
+	                tokenAmount = opcode.at(0) - 0x50;
+	            }
+	            else
+	            {
+	                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	                tokenAmount = CScriptNum(vec, true).getint64();
+	            }  
 				
 	    		if (tokenName != token)
 	    			continue;
@@ -1951,7 +2109,7 @@ UniValue tokenhistory(const UniValue &params, bool fHelp)
 				UniValue entry(UniValue::VOBJ);
 		        entry.push_back(Pair("txid", it.first.ToString()));
 		        entry.push_back(Pair("address", EncodeDestination(address)));
-		        entry.push_back(Pair("amount", amount));
+		        entry.push_back(Pair("amount", tokenAmount));
 		        entry.push_back(Pair("category", "send"));
 		        entry.push_back(Pair("timestamp", wtx.GetTxTime()));
 		        result.push_back(entry);
@@ -2019,10 +2177,23 @@ UniValue tokendetail(const UniValue &params, bool fHelp)
     		int namesize = pk[1];
     		int amountsize = pk[2 + namesize];
     		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
     		std::string name(vecName.begin(), vecName.end());
-    		CAmount amount = CScriptNum(vecAmount, true).getint64();
+    		// CAmount amount = CScriptNum(vecAmount, true).getint64();
 			
+    		// check opcode or scriptnum
+            CAmount amount = 0;
+            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                amount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+                amount = CScriptNum(vec, true).getint64();
+            }  
+
 			UniValue entry(UniValue::VOBJ);
 			CTxDestination address;
 			if (ExtractDestination(pk, address))
@@ -2050,8 +2221,21 @@ UniValue tokendetail(const UniValue &params, bool fHelp)
     	{
     		int namesize = pk[1];
     		int amountsize = pk[2 + namesize];
-    		std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
-    		CAmount amount = CScriptNum(vecAmount, true).getint64();
+    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+    		// CAmount amount = CScriptNum(vecAmount, true).getint64();
+
+    		// check opcode or scriptnum
+            CAmount amount = 0;
+            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                amount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+                amount = CScriptNum(vec, true).getint64();
+            }  
 			
 			UniValue entry(UniValue::VOBJ);
 			CTxDestination address;
