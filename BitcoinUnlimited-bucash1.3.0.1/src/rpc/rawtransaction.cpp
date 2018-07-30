@@ -1694,58 +1694,118 @@ UniValue tokenlist(const UniValue &params, bool fHelp)
 
 	UniValue result(UniValue::VARR);
 	std::set<std::string> sToken;
+    int height = chainActive.Height();
+    CBlockIndex *pblockindex = NULL;
 
-    for (auto it: pwalletMain->mapWallet)
+    for (int i = 100; i <= height; ++i)
     {
-    	const CWalletTx &wtx = it.second;
-    	if (wtx.IsCoinBase())
-    		continue;
-    	
-    	for (const auto &out: wtx.vout)
-    	{
-        	const CScript &pk = out.scriptPubKey;
-	    	if (pk.IsPayToToken())
-	    	{
-	    		int namesize = pk[1];
-	    		int amountsize = pk[2 + namesize];
-	    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
-	    		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
-	    		std::string tokenName(vecName.begin(), vecName.end());
-	    		// CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+        pblockindex = chainActive[i];
+        CBlock block;
+        if (ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
+        {
+            for (const auto &tx: block.vtx)
+            {
+                if (tx->IsCoinBase())
+                	continue;
 
-	    		// check opcode or scriptnum
-	            CAmount tokenAmount = 0;
-	            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
-	            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
-	            {
-	                tokenAmount = opcode.at(0) - 0x50;
-	            }
-	            else
-	            {
-	                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
-	                tokenAmount = CScriptNum(vec, true).getint64();
-	            }
+                for (const auto &out: tx->vout)
+                {
+                	const CScript &pk = out.scriptPubKey;
+			    	if (pk.IsPayToToken())
+			    	{
+			    		int namesize = pk[1];
+			    		int amountsize = pk[2 + namesize];
+			    		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+			    		std::string tokenName(vecName.begin(), vecName.end());
 
-	    		if (sToken.count(tokenName))
-	    			continue;
-	    		else 
-	    			sToken.insert(tokenName);
-	    		
-	    	    UniValue entry(UniValue::VOBJ);
-	    	    // entry.push_back(Pair("txid", it.first.ToString()));
-	    	    CTxDestination address;
-				if (ExtractDestination(pk, address))
-		        {
-		            // entry.push_back(Pair("address", EncodeDestination(address)));
-		            if (pwalletMain->mapAddressBook.count(address))
-		                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
-		        }
-	    		entry.push_back(Pair("token", tokenName));
-			    entry.push_back(Pair("supply", tokenAmount));
-			    result.push_back(entry);
-	    	}
-    	}
+			    		// check opcode or scriptnum
+			            CAmount tokenAmount = 0;
+			            std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+			            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+			            {
+			                tokenAmount = opcode.at(0) - 0x50;
+			            }
+			            else
+			            {
+			                std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+			                tokenAmount = CScriptNum(vec, true).getint64();
+			            }
+
+			    		if (sToken.count(tokenName))
+			    			continue;
+			    		else 
+			    			sToken.insert(tokenName);
+			    		
+			    	    UniValue entry(UniValue::VOBJ);
+			    	    entry.push_back(Pair("txid", tx->GetHash().GetHex()));
+			    	    CTxDestination address;
+						if (ExtractDestination(pk, address))
+				        {
+				            entry.push_back(Pair("address", EncodeDestination(address)));
+				            if (pwalletMain->mapAddressBook.count(address))
+				                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+				        }
+			    		entry.push_back(Pair("token", tokenName));
+					    entry.push_back(Pair("supply", tokenAmount));
+					    result.push_back(entry);
+			    	}
+                }
+
+            }
+        }
     }
+
+    // for (auto it: pwalletMain->mapWallet)
+    // {
+    // 	const CWalletTx &wtx = it.second;
+    // 	if (wtx.IsCoinBase())
+    // 		continue;
+    	
+    // 	for (const auto &out: wtx.vout)
+    // 	{
+    //     	const CScript &pk = out.scriptPubKey;
+	   //  	if (pk.IsPayToToken())
+	   //  	{
+	   //  		int namesize = pk[1];
+	   //  		int amountsize = pk[2 + namesize];
+	   //  		std::vector<unsigned char> vecName(pk.begin() + 2, pk.begin() + 2 + namesize);
+	   //  		// std::vector<unsigned char> vecAmount(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	   //  		std::string tokenName(vecName.begin(), vecName.end());
+	   //  		// CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
+
+	   //  		// check opcode or scriptnum
+	   //          CAmount tokenAmount = 0;
+	   //          std::vector<unsigned char> opcode(pk.begin() + 2 + namesize, pk.begin() + 3 + namesize);
+	   //          if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+	   //          {
+	   //              tokenAmount = opcode.at(0) - 0x50;
+	   //          }
+	   //          else
+	   //          {
+	   //              std::vector<unsigned char> vec(pk.begin() + 3 + namesize, pk.begin() + 3 + namesize + amountsize);
+	   //              tokenAmount = CScriptNum(vec, true).getint64();
+	   //          }
+
+	   //  		if (sToken.count(tokenName))
+	   //  			continue;
+	   //  		else 
+	   //  			sToken.insert(tokenName);
+	    		
+	   //  	    UniValue entry(UniValue::VOBJ);
+	   //  	    // entry.push_back(Pair("txid", it.first.ToString()));
+	   //  	    CTxDestination address;
+				// if (ExtractDestination(pk, address))
+		  //       {
+		  //           // entry.push_back(Pair("address", EncodeDestination(address)));
+		  //           if (pwalletMain->mapAddressBook.count(address))
+		  //               entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+		  //       }
+	   //  		entry.push_back(Pair("token", tokenName));
+			 //    entry.push_back(Pair("supply", tokenAmount));
+			 //    result.push_back(entry);
+	   //  	}
+    // 	}
+    // }
     return result;
 }
 
