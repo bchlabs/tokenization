@@ -1575,11 +1575,13 @@ UniValue tokentransfer(const UniValue &params, bool fHelp)
     for (size_t i = 0; i < utxoToken.size(); ++i)
     {
     	UniValue u = utxoToken[i];
+    	if (u["token"].get_str() != token)
+    		continue;
+
     	uint256 txid;
 		txid.SetHex(u["txid"].get_str());
     	CTxIn in(COutPoint(txid, u["vout"].get_int()), CScript(), nSequence);
         rawTx.vin.push_back(in); 
-
         nVinToken += u["tokenAmount"].get_int64();
         if (nVinToken >= nVoutToken)
             break; 
