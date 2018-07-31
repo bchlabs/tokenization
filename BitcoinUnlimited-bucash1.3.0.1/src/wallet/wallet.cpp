@@ -1530,41 +1530,32 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetTokenAvailableCredit() : value out of range");
 			
-	    if (nCredit == tmpCredit)
+            if (nCredit == tmpCredit)
                 continue; 
             
-	    tmpCredit = nCredit;
-	    if (txout.scriptPubKey.IsPayToScriptHash())
-	    {
-	        CTxDestination address;
-		if (ExtractDestination(txout.scriptPubKey, address))
-		{
-		    const CScriptID &hash = boost::get<CScriptID>(address);
-		    CScript redeemScript;
-		    if (pwalletMain->GetCScript(hash, redeemScript))
-		    {
-			if (!redeemScript.IsPayToToken())
-			    continue;						
-			int namesize = redeemScript[1];
-			int amountsize = redeemScript[2 + namesize];
-			std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-			std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-			std::string tokenName(vecName.begin(), vecName.end());
-			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-			mCredit[tokenName] = tokenAmount;
-		    }
-		}
-	    }
-	    else if (txout.scriptPubKey.IsPayToToken())	
+            tmpCredit = nCredit;
+            if (txout.scriptPubKey.IsPayToToken())	
             {
-		int namesize = txout.scriptPubKey[1];
-		int amountsize = txout.scriptPubKey[2 + namesize];
-		std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
-		std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
-		std::string tokenName(vecName.begin(), vecName.end());
-		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-		mCredit[tokenName] = tokenAmount;
-	    }
+                int namesize = txout.scriptPubKey[1];
+                int amountsize = txout.scriptPubKey[2 + namesize];
+                std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
+                std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
+                std::string tokenName(vecName.begin(), vecName.end());
+                
+                CAmount tokenAmount = 0;
+                std::vector<unsigned char> opcode(txout.scriptPubKey.begin() + 2 + namesize, txout.scriptPubKey.begin() + 3 + namesize);
+                if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+                {
+                    tokenAmount = opcode.at(0) - 0x50;
+                }
+                else
+                {
+                    std::vector<unsigned char> vec(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
+                    tokenAmount = CScriptNum(vec, true).getint64();
+                }
+                
+                mCredit[tokenName] = tokenAmount;
+            }
         }
     }
 

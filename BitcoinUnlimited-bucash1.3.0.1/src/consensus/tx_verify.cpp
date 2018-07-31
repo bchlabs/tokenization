@@ -219,7 +219,8 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 	
     std::map<std::string, CAmount> mVinToken;
     std::map<std::string, CAmount> mVoutToken;
-    std::vector<std::string> vTxid;
+    // verify token issue txid 
+    std::vector<std::string> vTxid;  
     std::vector<std::string> vTokenid;
 	
     for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -266,8 +267,6 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
                 tokenAmount = CScriptNum(vec, true).getint64();
             }
 
-            mVinToken[tokenName] = tokenAmount;
-			
             if (tokenAmount > MAX_TOKEN_SUPPLY) 
                 return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
 			
@@ -342,7 +341,6 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
     //     if (!issue)
     //         return state.DoS(100, false, REJECT_INVALID, "tokenid must be one of the issuer's UTXO txid");
     // }
-    // verify token end
 			
     if (nValueIn < tx.GetValueOut())
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-in-belowout", false,
