@@ -1495,6 +1495,11 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             const CTxOut &txout = vout[i];
+
+            // Token
+            if (txout.scriptPubKey.IsPayToToken())
+                continue;
+
             nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);	
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit(false) : value out of range");
@@ -2069,6 +2074,19 @@ bool CWallet::SelectCoins(const CAmount &nTargetValue,
     vector<COutput> vCoins;
     AvailableCoins(vCoins, true, coinControl);
 
+    // Token
+    std::vector<COutput> tmp;
+    for (const COutput &output: vCoins)
+    {
+        if (output.tx->vout[output.i].scriptPubKey.IsPayToToken())
+        {
+            continue;
+        }
+        tmp.push_back(output);
+    }
+    vCoins.clear();
+    vCoins.assign(tmp.begin(), tmp.end());
+
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
     if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs)
     {
@@ -2312,6 +2330,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient> &vecSend,
                     strFailReason = _("Insufficient funds");
                     return false;
                 }
+
                 BOOST_FOREACH (PAIRTYPE(const CWalletTx *, unsigned int) pcoin, setCoins)
                 {
                     CAmount nCredit = pcoin.first->vout[pcoin.second].nValue;
