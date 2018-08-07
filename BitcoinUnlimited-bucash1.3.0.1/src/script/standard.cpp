@@ -96,7 +96,7 @@ bool Solver(const CScript &scriptPubKey, txnouttype &typeRet, vector<vector<unsi
     if (scriptPubKey.IsPayToToken())
     {
         typeRet = TX_TOKEN;
-	vector<unsigned char> hashBytes(scriptPubKey.end() - 22, scriptPubKey.end() - 2);
+        vector<unsigned char> hashBytes(scriptPubKey.end() - 22, scriptPubKey.end() - 2);
         vSolutionsRet.push_back(hashBytes);
         return true;
     }

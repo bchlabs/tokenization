@@ -219,7 +219,8 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 	
     std::map<std::string, CAmount> mVinToken;
     std::map<std::string, CAmount> mVoutToken;
-    std::vector<std::string> vTxid;
+    // verify token issue txid 
+    std::vector<std::string> vTxid;  
     std::vector<std::string> vTokenid;
 	
     for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -246,42 +247,26 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
         // Token
         // verify token
         CScript prevPubkey = coin.out.scriptPubKey;
-        if (prevPubkey.IsPayToScriptHash())
-        {
-            std::vector<unsigned char> vec(prevPubkey.begin() + 2, prevPubkey.begin() + 22);
-            CScriptID hash = CScriptID(uint160(vec));
-            CScript redeemScript;
-            if (pwalletMain->GetCScript(hash, redeemScript))
-            {
-                if (!redeemScript.IsPayToToken())
-                    continue;
-				
-                int namesize = redeemScript[1];
-                int amountsize = redeemScript[2 + namesize];
-                std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-                std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-                std::string tokenName(vecName.begin(), vecName.end());
-                CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-                if (tokenAmount > MAX_TOKEN_SUPPLY) 
-                    return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
-				
-                CAmount temp = mVinToken[tokenName];
-                temp += tokenAmount;
-                if (temp > MAX_TOKEN_SUPPLY)
-                    return state.DoS(100, false, REJECT_INVALID, "vin amount out of range");
-                mVinToken[tokenName] = temp;
-            }
-        }
-        else if (prevPubkey.IsPayToToken())
+        if (prevPubkey.IsPayToToken())
         {
             int namesize = prevPubkey[1];
             int amountsize = prevPubkey[2 + namesize];
             std::vector<unsigned char> vecName(prevPubkey.begin() + 2, prevPubkey.begin() + 2 + namesize);
-            std::vector<unsigned char> vecAmount(prevPubkey.begin() + 3 + namesize, prevPubkey.begin() + 3 + namesize + amountsize);
             std::string tokenName(vecName.begin(), vecName.end());
-            CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-            mVinToken[tokenName] = tokenAmount;
-			
+
+            // check opcode or scriptnum
+            CAmount tokenAmount = 0;
+            std::vector<unsigned char> opcode(prevPubkey.begin() + 2 + namesize, prevPubkey.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                tokenAmount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(prevPubkey.begin() + 3 + namesize, prevPubkey.begin() + 3 + namesize + amountsize);
+                tokenAmount = CScriptNum(vec, true).getint64();
+            }
+
             if (tokenAmount > MAX_TOKEN_SUPPLY) 
                 return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
 			
@@ -306,9 +291,20 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
 			
             std::vector<unsigned char> vecName(outScript.begin() + 2, outScript.begin() + 2 + namesize);
             std::string name(vecName.begin(), vecName.end());
-			
-            std::vector<unsigned char> vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
-            CAmount amount = CScriptNum(vec, true).getint64();
+	
+            // check opcode or scriptnum
+            CAmount amount = 0;
+            std::vector<unsigned char> opcode(outScript.begin() + 2 + namesize, outScript.begin() + 3 + namesize);
+            if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+            {
+                amount = opcode.at(0) - 0x50;
+            }
+            else
+            {
+                std::vector<unsigned char> vec(outScript.begin() + 3 + namesize, outScript.begin() + 3 + namesize + amountsize);
+                amount = CScriptNum(vec, true).getint64();
+            }
+
             if (amount > MAX_TOKEN_SUPPLY) 
                 return state.DoS(100, false, REJECT_INVALID, "token amount out of range");
 			 
@@ -345,7 +341,6 @@ bool Consensus::CheckTxInputs(const CTransaction &tx, CValidationState &state, c
     //     if (!issue)
     //         return state.DoS(100, false, REJECT_INVALID, "tokenid must be one of the issuer's UTXO txid");
     // }
-    // verify token end
 			
     if (nValueIn < tx.GetValueOut())
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-in-belowout", false,

@@ -1495,6 +1495,11 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             const CTxOut &txout = vout[i];
+
+            // Token
+            if (txout.scriptPubKey.IsPayToToken())
+                continue;
+
             nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);	
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit(false) : value out of range");
@@ -1530,41 +1535,32 @@ std::map<std::string, CAmount> CWalletTx::GetTokenAvailableCredit() const
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetTokenAvailableCredit() : value out of range");
 			
-	    if (nCredit == tmpCredit)
+            if (nCredit == tmpCredit)
                 continue; 
             
-	    tmpCredit = nCredit;
-	    if (txout.scriptPubKey.IsPayToScriptHash())
-	    {
-	        CTxDestination address;
-		if (ExtractDestination(txout.scriptPubKey, address))
-		{
-		    const CScriptID &hash = boost::get<CScriptID>(address);
-		    CScript redeemScript;
-		    if (pwalletMain->GetCScript(hash, redeemScript))
-		    {
-			if (!redeemScript.IsPayToToken())
-			    continue;						
-			int namesize = redeemScript[1];
-			int amountsize = redeemScript[2 + namesize];
-			std::vector<unsigned char> vecName(redeemScript.begin() + 2, redeemScript.begin() + 2 + namesize);
-			std::vector<unsigned char> vecAmount(redeemScript.begin() + 3 + namesize, redeemScript.begin() + 3 + namesize + amountsize);
-			std::string tokenName(vecName.begin(), vecName.end());
-			CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-			mCredit[tokenName] = tokenAmount;
-		    }
-		}
-	    }
-	    else if (txout.scriptPubKey.IsPayToToken())	
+            tmpCredit = nCredit;
+            if (txout.scriptPubKey.IsPayToToken())	
             {
-		int namesize = txout.scriptPubKey[1];
-		int amountsize = txout.scriptPubKey[2 + namesize];
-		std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
-		std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
-		std::string tokenName(vecName.begin(), vecName.end());
-		CAmount tokenAmount = CScriptNum(vecAmount, true).getint64();
-		mCredit[tokenName] = tokenAmount;
-	    }
+                int namesize = txout.scriptPubKey[1];
+                int amountsize = txout.scriptPubKey[2 + namesize];
+                std::vector<unsigned char> vecName(txout.scriptPubKey.begin() + 2, txout.scriptPubKey.begin() + 2 + namesize);
+                std::vector<unsigned char> vecAmount(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
+                std::string tokenName(vecName.begin(), vecName.end());
+                
+                CAmount tokenAmount = 0;
+                std::vector<unsigned char> opcode(txout.scriptPubKey.begin() + 2 + namesize, txout.scriptPubKey.begin() + 3 + namesize);
+                if (0x50 < opcode.at(0) && opcode.at(0) < 0x61)
+                {
+                    tokenAmount = opcode.at(0) - 0x50;
+                }
+                else
+                {
+                    std::vector<unsigned char> vec(txout.scriptPubKey.begin() + 3 + namesize, txout.scriptPubKey.begin() + 3 + namesize + amountsize);
+                    tokenAmount = CScriptNum(vec, true).getint64();
+                }
+                
+                mCredit[tokenName] = tokenAmount;
+            }
         }
     }
 
@@ -2078,6 +2074,19 @@ bool CWallet::SelectCoins(const CAmount &nTargetValue,
     vector<COutput> vCoins;
     AvailableCoins(vCoins, true, coinControl);
 
+    // Token
+    std::vector<COutput> tmp;
+    for (const COutput &output: vCoins)
+    {
+        if (output.tx->vout[output.i].scriptPubKey.IsPayToToken())
+        {
+            continue;
+        }
+        tmp.push_back(output);
+    }
+    vCoins.clear();
+    vCoins.assign(tmp.begin(), tmp.end());
+
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
     if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs)
     {
@@ -2321,6 +2330,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient> &vecSend,
                     strFailReason = _("Insufficient funds");
                     return false;
                 }
+
                 BOOST_FOREACH (PAIRTYPE(const CWalletTx *, unsigned int) pcoin, setCoins)
                 {
                     CAmount nCredit = pcoin.first->vout[pcoin.second].nValue;
